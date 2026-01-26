@@ -110,6 +110,55 @@ interface Layout {
 }
 
 // ============================================================================
+// AAA FEATURES: New Type Definitions
+// ============================================================================
+
+// Verlet point for cloth/scarf physics
+interface VerletPoint {
+  x: number;
+  y: number;
+  oldX: number;
+  oldY: number;
+  pinned: boolean;
+}
+
+// IK chain for procedural animation
+interface IKJoint {
+  x: number;
+  y: number;
+  angle: number;
+  length: number;
+}
+
+// Camera state for predictive following
+interface CameraState {
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  zoom: number;
+  targetZoom: number;
+  velocityX: number;
+  velocityY: number;
+}
+
+// Time dilation state
+interface TimeDilation {
+  scale: number;
+  targetScale: number;
+  duration: number;
+  elapsed: number;
+}
+
+// Trail point for motion blur
+interface TrailPoint {
+  x: number;
+  y: number;
+  angle: number;
+  alpha: number;
+}
+
+// ============================================================================
 // SECTION 3: CONFIGURATION (All game constants in one place)
 // ============================================================================
 
@@ -209,6 +258,54 @@ const CONFIG = {
     FIXED_TIMESTEP: 1000 / 60,
     MAX_FRAME_TIME: 100,
   },
+
+  // AAA: Verlet Scarf Physics
+  SCARF: {
+    POINTS: 8,
+    SEGMENT_LENGTH: 12,
+    GRAVITY: 0.4,
+    FRICTION: 0.97,
+    ITERATIONS: 3,
+    COLOR_START: '#e94560',
+    COLOR_END: '#ff6b9d',
+  },
+
+  // AAA: Camera System
+  CAMERA: {
+    LEAD_AMOUNT: 80,
+    SMOOTHING: 0.08,
+    ZOOM_SMOOTHING: 0.05,
+    IMPACT_ZOOM: 1.15,
+    NORMAL_ZOOM: 1.0,
+  },
+
+  // AAA: Time Dilation
+  TIME: {
+    NORMAL_SCALE: 1.0,
+    SLOWMO_SCALE: 0.25,
+    SLOWMO_DURATION: 800,
+    TRANSITION_SPEED: 0.1,
+  },
+
+  // AAA: Lighting
+  LIGHTING: {
+    WHEEL_GLOW_RADIUS: 150,
+    AMBIENT: 0.3,
+    SHADOW_OPACITY: 0.4,
+  },
+
+  // AAA: Post Processing
+  POST: {
+    BLOOM_INTENSITY: 0.3,
+    CHROMATIC_OFFSET: 3,
+    VIGNETTE_INTENSITY: 0.4,
+  },
+
+  // AAA: Trail/Motion Blur
+  TRAIL: {
+    LENGTH: 5,
+    OPACITY_DECAY: 0.7,
+  },
 };
 
 // ============================================================================
@@ -247,7 +344,399 @@ const Utils = {
     if (t === 0 || t === 1) return t;
     return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1;
   },
+
+  // Distance between two points
+  distance(x1: number, y1: number, x2: number, y2: number): number {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    return Math.sqrt(dx * dx + dy * dy);
+  },
 };
+
+// ============================================================================
+// SECTION 4B: VERLET PHYSICS SYSTEM (Scarf/Cape)
+// ============================================================================
+
+class VerletSystem {
+  private points: VerletPoint[] = [];
+
+  constructor() {
+    this.reset();
+  }
+
+  reset(): void {
+    this.points = [];
+    for (let i = 0; i < CONFIG.SCARF.POINTS; i++) {
+      this.points.push({
+        x: 0,
+        y: 0,
+        oldX: 0,
+        oldY: 0,
+        pinned: i === 0,
+      });
+    }
+  }
+
+  update(anchorX: number, anchorY: number, anchorAngle: number, dt: number, windX: number): void {
+    const dtNorm = dt / 16.67;
+
+    // Pin first point to anchor (player's neck)
+    this.points[0].x = anchorX;
+    this.points[0].y = anchorY;
+
+    // Apply verlet integration
+    for (let i = 1; i < this.points.length; i++) {
+      const p = this.points[i];
+      if (p.pinned) continue;
+
+      const vx = (p.x - p.oldX) * CONFIG.SCARF.FRICTION;
+      const vy = (p.y - p.oldY) * CONFIG.SCARF.FRICTION;
+
+      p.oldX = p.x;
+      p.oldY = p.y;
+
+      p.x += vx + windX * 0.5 * dtNorm;
+      p.y += vy + CONFIG.SCARF.GRAVITY * dtNorm;
+    }
+
+    // Constraint iterations
+    for (let iter = 0; iter < CONFIG.SCARF.ITERATIONS; iter++) {
+      for (let i = 0; i < this.points.length - 1; i++) {
+        const p1 = this.points[i];
+        const p2 = this.points[i + 1];
+
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const diff = CONFIG.SCARF.SEGMENT_LENGTH - dist;
+        const percent = diff / dist / 2;
+
+        const offsetX = dx * percent;
+        const offsetY = dy * percent;
+
+        if (!p1.pinned) {
+          p1.x -= offsetX;
+          p1.y -= offsetY;
+        }
+        if (!p2.pinned) {
+          p2.x += offsetX;
+          p2.y += offsetY;
+        }
+      }
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D): void {
+    if (this.points.length < 2) return;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Draw scarf with gradient thickness
+    for (let i = 0; i < this.points.length - 1; i++) {
+      const p1 = this.points[i];
+      const p2 = this.points[i + 1];
+      const t = i / (this.points.length - 1);
+
+      // Gradient color
+      const r = Math.round(233 + (255 - 233) * t);
+      const g = Math.round(69 + (107 - 69) * t);
+      const b = Math.round(96 + (157 - 96) * t);
+
+      ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.lineWidth = 8 - t * 5; // Taper from 8 to 3
+
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+  }
+
+  getPoints(): VerletPoint[] {
+    return this.points;
+  }
+}
+
+// ============================================================================
+// SECTION 4C: CAMERA SYSTEM (Predictive Following)
+// ============================================================================
+
+class CameraSystem {
+  private state: CameraState;
+
+  constructor(width: number, height: number) {
+    this.state = {
+      x: width / 2,
+      y: height / 2,
+      targetX: width / 2,
+      targetY: height / 2,
+      zoom: 1,
+      targetZoom: 1,
+      velocityX: 0,
+      velocityY: 0,
+    };
+  }
+
+  update(playerX: number, playerY: number, playerVelX: number, dt: number): void {
+    // Predictive target (lead the player)
+    this.state.targetX = playerX + playerVelX * CONFIG.CAMERA.LEAD_AMOUNT;
+    this.state.targetY = playerY;
+
+    // Smooth follow with spring physics
+    const dx = this.state.targetX - this.state.x;
+    const dy = this.state.targetY - this.state.y;
+
+    this.state.velocityX += dx * CONFIG.CAMERA.SMOOTHING;
+    this.state.velocityY += dy * CONFIG.CAMERA.SMOOTHING;
+    this.state.velocityX *= 0.85;
+    this.state.velocityY *= 0.85;
+
+    this.state.x += this.state.velocityX * (dt / 16.67);
+    this.state.y += this.state.velocityY * (dt / 16.67);
+
+    // Zoom interpolation
+    this.state.zoom = Utils.lerp(this.state.zoom, this.state.targetZoom, CONFIG.CAMERA.ZOOM_SMOOTHING);
+  }
+
+  triggerImpactZoom(): void {
+    this.state.targetZoom = CONFIG.CAMERA.IMPACT_ZOOM;
+    setTimeout(() => {
+      this.state.targetZoom = CONFIG.CAMERA.NORMAL_ZOOM;
+    }, 200);
+  }
+
+  applyTransform(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const offsetX = centerX - this.state.x;
+
+    ctx.translate(centerX, centerY);
+    ctx.scale(this.state.zoom, this.state.zoom);
+    ctx.translate(-centerX + offsetX * 0.3, -centerY);
+  }
+
+  reset(width: number, height: number): void {
+    this.state.x = width / 2;
+    this.state.y = height / 2;
+    this.state.zoom = 1;
+    this.state.targetZoom = 1;
+    this.state.velocityX = 0;
+    this.state.velocityY = 0;
+  }
+}
+
+// ============================================================================
+// SECTION 4D: TIME DILATION SYSTEM
+// ============================================================================
+
+class TimeDilationSystem {
+  private dilation: TimeDilation = {
+    scale: 1,
+    targetScale: 1,
+    duration: 0,
+    elapsed: 0,
+  };
+
+  triggerSlowMo(duration: number = CONFIG.TIME.SLOWMO_DURATION): void {
+    this.dilation.targetScale = CONFIG.TIME.SLOWMO_SCALE;
+    this.dilation.duration = duration;
+    this.dilation.elapsed = 0;
+  }
+
+  update(dt: number): number {
+    // Handle slow-mo duration
+    if (this.dilation.duration > 0) {
+      this.dilation.elapsed += dt;
+      if (this.dilation.elapsed >= this.dilation.duration) {
+        this.dilation.targetScale = CONFIG.TIME.NORMAL_SCALE;
+        this.dilation.duration = 0;
+      }
+    }
+
+    // Smooth transition
+    this.dilation.scale = Utils.lerp(
+      this.dilation.scale,
+      this.dilation.targetScale,
+      CONFIG.TIME.TRANSITION_SPEED
+    );
+
+    return this.dilation.scale;
+  }
+
+  getScale(): number {
+    return this.dilation.scale;
+  }
+
+  isSlowMo(): boolean {
+    return this.dilation.scale < 0.8;
+  }
+
+  reset(): void {
+    this.dilation.scale = 1;
+    this.dilation.targetScale = 1;
+    this.dilation.duration = 0;
+  }
+}
+
+// ============================================================================
+// SECTION 4E: POST-PROCESSING SYSTEM (Bloom, Chromatic Aberration)
+// ============================================================================
+
+class PostProcessingSystem {
+  private bloomCanvas: OffscreenCanvas;
+  private bloomCtx: OffscreenCanvasRenderingContext2D;
+
+  constructor(width: number, height: number) {
+    this.bloomCanvas = new OffscreenCanvas(width / 4, height / 4);
+    this.bloomCtx = this.bloomCanvas.getContext('2d')!;
+  }
+
+  resize(width: number, height: number): void {
+    this.bloomCanvas = new OffscreenCanvas(width / 4, height / 4);
+    this.bloomCtx = this.bloomCanvas.getContext('2d')!;
+  }
+
+  applyBloom(ctx: CanvasRenderingContext2D, sourceCanvas: HTMLCanvasElement): void {
+    const w = this.bloomCanvas.width;
+    const h = this.bloomCanvas.height;
+
+    // Downscale
+    this.bloomCtx.drawImage(sourceCanvas, 0, 0, w, h);
+
+    // Blur (simple box blur via multiple draws)
+    this.bloomCtx.filter = 'blur(8px)';
+    this.bloomCtx.globalAlpha = 0.5;
+    this.bloomCtx.drawImage(this.bloomCanvas, 0, 0);
+    this.bloomCtx.filter = 'none';
+    this.bloomCtx.globalAlpha = 1;
+
+    // Composite back
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = CONFIG.POST.BLOOM_INTENSITY;
+    ctx.drawImage(this.bloomCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  applyChromaticAberration(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, intensity: number): void {
+    if (intensity < 0.1) return;
+
+    const offset = CONFIG.POST.CHROMATIC_OFFSET * intensity;
+
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.1 * intensity;
+
+    // Red channel offset
+    ctx.drawImage(canvas, -offset, 0);
+
+    // Blue channel offset
+    ctx.drawImage(canvas, offset, 0);
+
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  drawVignette(ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number): void {
+    const gradient = ctx.createRadialGradient(
+      width / 2, height / 2, height * 0.3,
+      width / 2, height / 2, height * 0.8
+    );
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(1, `rgba(0, 0, 0, ${CONFIG.POST.VIGNETTE_INTENSITY * intensity})`);
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+  }
+}
+
+// ============================================================================
+// SECTION 4F: TRAIL RENDERER (Motion Blur)
+// ============================================================================
+
+class TrailRenderer {
+  private trails: TrailPoint[] = [];
+  private maxLength = CONFIG.TRAIL.LENGTH;
+
+  addPoint(x: number, y: number, angle: number): void {
+    this.trails.unshift({ x, y, angle, alpha: 1 });
+    if (this.trails.length > this.maxLength) {
+      this.trails.pop();
+    }
+  }
+
+  update(): void {
+    for (let i = 0; i < this.trails.length; i++) {
+      this.trails[i].alpha *= CONFIG.TRAIL.OPACITY_DECAY;
+    }
+    // Remove faded trails
+    this.trails = this.trails.filter(t => t.alpha > 0.05);
+  }
+
+  draw(ctx: CanvasRenderingContext2D, drawPlayer: (ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, alpha: number) => void): void {
+    for (let i = this.trails.length - 1; i >= 0; i--) {
+      const t = this.trails[i];
+      drawPlayer(ctx, t.x, t.y, t.angle, t.alpha * 0.3);
+    }
+  }
+
+  clear(): void {
+    this.trails = [];
+  }
+}
+
+// ============================================================================
+// SECTION 4G: DYNAMIC LIGHTING SYSTEM
+// ============================================================================
+
+class LightingSystem {
+  drawWheelGlow(ctx: CanvasRenderingContext2D, x: number, y: number, speed: number): void {
+    const intensity = Math.min(speed / CONFIG.MOVEMENT.GROUND_SPEED_MAX, 1);
+    const radius = CONFIG.LIGHTING.WHEEL_GLOW_RADIUS * (0.5 + intensity * 0.5);
+
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, `rgba(78, 204, 163, ${0.4 * intensity})`);
+    gradient.addColorStop(0.5, `rgba(78, 204, 163, ${0.15 * intensity})`);
+    gradient.addColorStop(1, 'rgba(78, 204, 163, 0)');
+
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  drawGroundShadow(ctx: CanvasRenderingContext2D, playerX: number, groundY: number, angle: number): void {
+    const shadowLength = 60 + Math.abs(angle) * 40;
+    const shadowDirection = angle > 0 ? 1 : -1;
+
+    ctx.fillStyle = `rgba(0, 0, 0, ${CONFIG.LIGHTING.SHADOW_OPACITY})`;
+    ctx.beginPath();
+    ctx.ellipse(
+      playerX + shadowDirection * shadowLength * 0.3,
+      groundY + 5,
+      30 + Math.abs(angle) * 20,
+      8,
+      0, 0, Math.PI * 2
+    );
+    ctx.fill();
+  }
+
+  drawObstacleShadow(ctx: CanvasRenderingContext2D, obstacleX: number, obstacleWidth: number, groundY: number, height: number, lightX: number): void {
+    const dx = obstacleX - lightX;
+    const shadowStretch = Math.abs(dx) * 0.02;
+
+    ctx.fillStyle = `rgba(0, 0, 0, ${CONFIG.LIGHTING.SHADOW_OPACITY * 0.5})`;
+    ctx.beginPath();
+    ctx.moveTo(obstacleX, groundY);
+    ctx.lineTo(obstacleX + obstacleWidth, groundY);
+    ctx.lineTo(obstacleX + obstacleWidth + shadowStretch * 30, groundY + 10);
+    ctx.lineTo(obstacleX - shadowStretch * 10, groundY + 10);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
 
 // ============================================================================
 // SECTION 5: SETTINGS SYSTEM
@@ -1620,12 +2109,23 @@ class GameEngine {
   private ui: UISystem;
   private render: RenderSystem;
 
+  // AAA Systems
+  private verlet: VerletSystem;
+  private camera: CameraSystem;
+  private timeDilation: TimeDilationSystem;
+  private postProcess: PostProcessingSystem;
+  private trail: TrailRenderer;
+  private lighting: LightingSystem;
+
   // Timing
   private lastTime = 0;
   private accumulator = 0;
 
   // Dust spawn accumulator
   private dustAccumulator = 0;
+
+  // Near-miss tracking for slow-mo
+  private lastNearMissTime = 0;
 
   constructor() {
     // Initialize layout first
@@ -1649,6 +2149,14 @@ class GameEngine {
     const bgCanvas = document.getElementById('bg-canvas') as HTMLCanvasElement;
     const gameCanvas = document.getElementById('game-canvas') as HTMLCanvasElement;
     this.render = new RenderSystem(bgCanvas, gameCanvas);
+
+    // Initialize AAA systems
+    this.verlet = new VerletSystem();
+    this.camera = new CameraSystem(this.layout.width, this.layout.height);
+    this.timeDilation = new TimeDilationSystem();
+    this.postProcess = new PostProcessingSystem(this.layout.width, this.layout.height);
+    this.trail = new TrailRenderer();
+    this.lighting = new LightingSystem();
 
     // Setup
     this.setupEventListeners();
@@ -1708,10 +2216,12 @@ class GameEngine {
     this.player.x = this.layout.playerX;
     this.render.resize(this.layout);
     this.input.updateLayout(this.layout);
+    this.postProcess.resize(this.layout.width, this.layout.height);
+    this.camera.reset(this.layout.width, this.layout.height);
   }
 
   private gameLoop(currentTime: number): void {
-    const frameTime = Math.min(currentTime - this.lastTime, CONFIG.TIMING.MAX_FRAME_TIME);
+    const rawFrameTime = Math.min(currentTime - this.lastTime, CONFIG.TIMING.MAX_FRAME_TIME);
     this.lastTime = currentTime;
 
     // Handle settings modal
@@ -1725,6 +2235,10 @@ class GameEngine {
       this.handleAction();
     }
 
+    // Update time dilation
+    const timeScale = this.timeDilation.update(rawFrameTime);
+    const frameTime = rawFrameTime * timeScale;
+
     // Update based on state
     if (this.state === 'playing' && !this.feedback.isFrozen()) {
       this.accumulator += frameTime;
@@ -1734,10 +2248,25 @@ class GameEngine {
         this.updatePhysics(CONFIG.TIMING.FIXED_TIMESTEP);
         this.accumulator -= CONFIG.TIMING.FIXED_TIMESTEP;
       }
+
+      // Update AAA systems
+      const neckX = this.player.x - Math.sin(this.player.angle) * 50;
+      const neckY = this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS - CONFIG.PLAYER.BODY_HEIGHT - 10;
+      const windX = -this.groundSpeed * 0.5;
+      this.verlet.update(neckX, neckY, this.player.angle, frameTime, windX);
+
+      // Update camera
+      this.camera.update(this.player.x, this.layout.groundY, this.groundSpeed, frameTime);
+
+      // Update trail
+      if (this.groundSpeed > CONFIG.MOVEMENT.GROUND_SPEED_INITIAL * 1.5) {
+        this.trail.addPoint(this.player.x, this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS, this.player.angle);
+      }
+      this.trail.update();
     }
 
     // Always update visual systems
-    this.feedback.update(frameTime);
+    this.feedback.update(rawFrameTime);
     this.particles.update(frameTime);
     this.render.updateTime(frameTime);
 
@@ -1801,6 +2330,7 @@ class GameEngine {
     this.ui.hideHUD();
     this.ui.showHints();
     this.settings.setButtonVisible(false);
+    this.resetAAASystems();
   }
 
   private updatePhysics(dt: number): void {
@@ -1822,6 +2352,15 @@ class GameEngine {
     // Trigger wobble feedback at high danger
     if (danger > 0.7 && Math.random() < 0.05) {
       this.feedback.trigger('wobble');
+    }
+
+    // AAA: Trigger slow-mo on near-miss (high danger recovery)
+    const now = performance.now();
+    if (danger > 0.85 && now - this.lastNearMissTime > 2000) {
+      this.timeDilation.triggerSlowMo(600);
+      this.camera.triggerImpactZoom();
+      this.feedback.trigger('nearMiss', this.player.x, this.layout.groundY);
+      this.lastNearMissTime = now;
     }
 
     // Update ground speed (difficulty progression)
@@ -1888,6 +2427,9 @@ class GameEngine {
   }
 
   private renderFrame(): void {
+    const gameCanvas = document.getElementById('game-canvas') as HTMLCanvasElement;
+    const ctx = gameCanvas.getContext('2d')!;
+
     // Draw static background
     this.render.drawBackground(this.layout);
 
@@ -1898,8 +2440,28 @@ class GameEngine {
     const shakeOffset = this.feedback.getShakeOffset();
     this.render.applyShake(shakeOffset);
 
+    // AAA: Apply camera transform
+    if (this.state === 'playing') {
+      this.camera.applyTransform(ctx, this.layout.width, this.layout.height);
+    }
+
+    // AAA: Draw dynamic lighting - ground shadow
+    this.lighting.drawGroundShadow(ctx, this.player.x, this.layout.groundY, this.player.angle);
+
     // Draw ground
     this.render.drawGround(this.layout);
+
+    // AAA: Draw obstacle shadows
+    for (const obstacle of this.gameObjects.getObstacles()) {
+      this.lighting.drawObstacleShadow(
+        ctx,
+        obstacle.x,
+        obstacle.width,
+        this.layout.groundY,
+        obstacle.height,
+        this.player.x
+      );
+    }
 
     // Draw obstacles
     for (const obstacle of this.gameObjects.getObstacles()) {
@@ -1913,15 +2475,48 @@ class GameEngine {
       }
     }
 
+    // AAA: Draw motion trail
+    this.trail.draw(ctx, (c, x, y, angle, alpha) => {
+      c.globalAlpha = alpha;
+      this.render.drawPlayer({ ...this.player, x, angle }, this.layout.groundY, this.groundSpeed);
+      c.globalAlpha = 1;
+    });
+
     // Draw player
     this.render.drawPlayer(this.player, this.layout.groundY, this.groundSpeed);
 
+    // AAA: Draw scarf/cape
+    this.verlet.draw(ctx);
+
+    // AAA: Draw wheel glow
+    this.lighting.drawWheelGlow(
+      ctx,
+      this.player.x,
+      this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS,
+      this.groundSpeed
+    );
+
     // Draw particles
-    const ctx = (document.getElementById('game-canvas') as HTMLCanvasElement).getContext('2d')!;
     this.particles.draw(ctx);
 
     // Reset transform
     this.render.resetTransform();
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset camera transform
+
+    // AAA: Post-processing effects
+    if (this.state === 'playing') {
+      // Chromatic aberration on slow-mo
+      if (this.timeDilation.isSlowMo()) {
+        this.postProcess.applyChromaticAberration(ctx, gameCanvas, 1 - this.timeDilation.getScale());
+      }
+
+      // Vignette effect
+      const danger = this.physics.getDangerLevel(this.player);
+      this.postProcess.drawVignette(ctx, this.layout.width, this.layout.height, 0.5 + danger * 0.5);
+
+      // Bloom on coins and glow
+      this.postProcess.applyBloom(ctx, gameCanvas);
+    }
 
     // Draw overlays based on state
     if (this.state === 'start') {
@@ -1929,6 +2524,23 @@ class GameEngine {
     } else if (this.state === 'gameOver') {
       this.render.drawGameOverScreen(this.layout, this.score);
     }
+
+    // AAA: Draw slow-mo indicator
+    if (this.timeDilation.isSlowMo()) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.font = 'bold 24px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('SLOW MOTION', this.layout.width / 2, this.layout.safeAreaTop + 80);
+    }
+  }
+
+  // AAA: Reset method update to include new systems
+  private resetAAASystems(): void {
+    this.verlet.reset();
+    this.camera.reset(this.layout.width, this.layout.height);
+    this.timeDilation.reset();
+    this.trail.clear();
+    this.lastNearMissTime = 0;
   }
 }
 
