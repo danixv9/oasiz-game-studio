@@ -22,10 +22,16 @@ declare global {
 // SECTION 2: TYPE DEFINITIONS & INTERFACES
 // ============================================================================
 
-type GameState = 'start' | 'playing' | 'paused' | 'gameOver';
-type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'error';
-type ParticleType = 'dust' | 'spark' | 'star' | 'crash';
-type FeedbackType = 'coinCollect' | 'obstaclePass' | 'nearMiss' | 'wobble' | 'fall' | 'start';
+type GameState = "start" | "playing" | "paused" | "gameOver";
+type HapticType = "light" | "medium" | "heavy" | "success" | "error";
+type ParticleType = "dust" | "spark" | "star" | "crash";
+type FeedbackType =
+  | "coinCollect"
+  | "obstaclePass"
+  | "nearMiss"
+  | "wobble"
+  | "fall"
+  | "start";
 
 interface Settings {
   music: boolean;
@@ -166,7 +172,7 @@ const CONFIG = {
   // Physics - Tuned for forgiving but engaging gameplay
   PHYSICS: {
     GRAVITY_TORQUE: 0.0012,
-    ANGULAR_ACCELERATION: 0.010,
+    ANGULAR_ACCELERATION: 0.01,
     ANGULAR_FRICTION: 0.965,
     MAX_ANGULAR_VELOCITY: 0.16,
     FALL_ANGLE: Math.PI / 2.5, // ~72 degrees (forgiving)
@@ -227,24 +233,24 @@ const CONFIG = {
 
   // Colors
   COLORS: {
-    SKY_TOP: '#1a1a2e',
-    SKY_BOTTOM: '#16213e',
-    GROUND: '#4ecca3',
-    GROUND_DARK: '#3da882',
-    GROUND_PATTERN: '#2d9b7a',
-    PLAYER_BODY: '#e94560',
-    PLAYER_SKIN: '#ffd5c8',
-    PLAYER_WHEEL: '#2d2d44',
-    PLAYER_WHEEL_SPOKE: '#444466',
-    OBSTACLE: '#ff6b6b',
-    OBSTACLE_HIGHLIGHT: '#ff8585',
-    OBSTACLE_SHADOW: '#ee5a5a',
-    COIN: '#ffd700',
-    COIN_DARK: '#ccac00',
-    COIN_GLOW: 'rgba(255, 215, 0, 0.3)',
-    PARTICLE_DUST: '#8b7355',
-    PARTICLE_SPARK: '#ffdd44',
-    TEXT: '#ffffff',
+    SKY_TOP: "#1a1a2e",
+    SKY_BOTTOM: "#16213e",
+    GROUND: "#4ecca3",
+    GROUND_DARK: "#3da882",
+    GROUND_PATTERN: "#2d9b7a",
+    PLAYER_BODY: "#e94560",
+    PLAYER_SKIN: "#ffd5c8",
+    PLAYER_WHEEL: "#2d2d44",
+    PLAYER_WHEEL_SPOKE: "#444466",
+    OBSTACLE: "#ff6b6b",
+    OBSTACLE_HIGHLIGHT: "#ff8585",
+    OBSTACLE_SHADOW: "#ee5a5a",
+    COIN: "#ffd700",
+    COIN_DARK: "#ccac00",
+    COIN_GLOW: "rgba(255, 215, 0, 0.3)",
+    PARTICLE_DUST: "#8b7355",
+    PARTICLE_SPARK: "#ffdd44",
+    TEXT: "#ffffff",
   },
 
   // Layout
@@ -266,8 +272,8 @@ const CONFIG = {
     GRAVITY: 0.4,
     FRICTION: 0.97,
     ITERATIONS: 3,
-    COLOR_START: '#e94560',
-    COLOR_END: '#ff6b9d',
+    COLOR_START: "#e94560",
+    COLOR_END: "#ff6b9d",
   },
 
   // AAA: Camera System
@@ -342,7 +348,9 @@ const Utils = {
 
   easeOutElastic(t: number): number {
     if (t === 0 || t === 1) return t;
-    return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1;
+    return (
+      Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1
+    );
   },
 
   // Distance between two points
@@ -377,7 +385,13 @@ class VerletSystem {
     }
   }
 
-  update(anchorX: number, anchorY: number, anchorAngle: number, dt: number, windX: number): void {
+  update(
+    anchorX: number,
+    anchorY: number,
+    anchorAngle: number,
+    dt: number,
+    windX: number,
+  ): void {
     const dtNorm = dt / 16.67;
 
     // Pin first point to anchor (player's neck)
@@ -429,8 +443,8 @@ class VerletSystem {
   draw(ctx: CanvasRenderingContext2D): void {
     if (this.points.length < 2) return;
 
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
     // Draw scarf with gradient thickness
     for (let i = 0; i < this.points.length - 1; i++) {
@@ -478,7 +492,12 @@ class CameraSystem {
     };
   }
 
-  update(playerX: number, playerY: number, playerVelX: number, dt: number): void {
+  update(
+    playerX: number,
+    playerY: number,
+    playerVelX: number,
+    dt: number,
+  ): void {
     // Predictive target (lead the player)
     this.state.targetX = playerX + playerVelX * CONFIG.CAMERA.LEAD_AMOUNT;
     this.state.targetY = playerY;
@@ -496,7 +515,11 @@ class CameraSystem {
     this.state.y += this.state.velocityY * (dt / 16.67);
 
     // Zoom interpolation
-    this.state.zoom = Utils.lerp(this.state.zoom, this.state.targetZoom, CONFIG.CAMERA.ZOOM_SMOOTHING);
+    this.state.zoom = Utils.lerp(
+      this.state.zoom,
+      this.state.targetZoom,
+      CONFIG.CAMERA.ZOOM_SMOOTHING,
+    );
   }
 
   triggerImpactZoom(): void {
@@ -506,7 +529,11 @@ class CameraSystem {
     }, 200);
   }
 
-  applyTransform(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  applyTransform(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+  ): void {
     const centerX = width / 2;
     const centerY = height / 2;
     const offsetX = centerX - this.state.x;
@@ -558,7 +585,7 @@ class TimeDilationSystem {
     this.dilation.scale = Utils.lerp(
       this.dilation.scale,
       this.dilation.targetScale,
-      CONFIG.TIME.TRANSITION_SPEED
+      CONFIG.TIME.TRANSITION_SPEED,
     );
 
     return this.dilation.scale;
@@ -589,15 +616,18 @@ class PostProcessingSystem {
 
   constructor(width: number, height: number) {
     this.bloomCanvas = new OffscreenCanvas(width / 4, height / 4);
-    this.bloomCtx = this.bloomCanvas.getContext('2d')!;
+    this.bloomCtx = this.bloomCanvas.getContext("2d")!;
   }
 
   resize(width: number, height: number): void {
     this.bloomCanvas = new OffscreenCanvas(width / 4, height / 4);
-    this.bloomCtx = this.bloomCanvas.getContext('2d')!;
+    this.bloomCtx = this.bloomCanvas.getContext("2d")!;
   }
 
-  applyBloom(ctx: CanvasRenderingContext2D, sourceCanvas: HTMLCanvasElement): void {
+  applyBloom(
+    ctx: CanvasRenderingContext2D,
+    sourceCanvas: HTMLCanvasElement,
+  ): void {
     const w = this.bloomCanvas.width;
     const h = this.bloomCanvas.height;
 
@@ -605,26 +635,36 @@ class PostProcessingSystem {
     this.bloomCtx.drawImage(sourceCanvas, 0, 0, w, h);
 
     // Blur (simple box blur via multiple draws)
-    this.bloomCtx.filter = 'blur(8px)';
+    this.bloomCtx.filter = "blur(8px)";
     this.bloomCtx.globalAlpha = 0.5;
     this.bloomCtx.drawImage(this.bloomCanvas, 0, 0);
-    this.bloomCtx.filter = 'none';
+    this.bloomCtx.filter = "none";
     this.bloomCtx.globalAlpha = 1;
 
     // Composite back
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = CONFIG.POST.BLOOM_INTENSITY;
-    ctx.drawImage(this.bloomCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height);
+    ctx.drawImage(
+      this.bloomCanvas,
+      0,
+      0,
+      sourceCanvas.width,
+      sourceCanvas.height,
+    );
     ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = "source-over";
   }
 
-  applyChromaticAberration(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, intensity: number): void {
+  applyChromaticAberration(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    intensity: number,
+  ): void {
     if (intensity < 0.1) return;
 
     const offset = CONFIG.POST.CHROMATIC_OFFSET * intensity;
 
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.1 * intensity;
 
     // Red channel offset
@@ -634,16 +674,28 @@ class PostProcessingSystem {
     ctx.drawImage(canvas, offset, 0);
 
     ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = "source-over";
   }
 
-  drawVignette(ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number): void {
+  drawVignette(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    intensity: number,
+  ): void {
     const gradient = ctx.createRadialGradient(
-      width / 2, height / 2, height * 0.3,
-      width / 2, height / 2, height * 0.8
+      width / 2,
+      height / 2,
+      height * 0.3,
+      width / 2,
+      height / 2,
+      height * 0.8,
     );
-    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(1, `rgba(0, 0, 0, ${CONFIG.POST.VIGNETTE_INTENSITY * intensity})`);
+    gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+    gradient.addColorStop(
+      1,
+      `rgba(0, 0, 0, ${CONFIG.POST.VIGNETTE_INTENSITY * intensity})`,
+    );
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
@@ -670,10 +722,19 @@ class TrailRenderer {
       this.trails[i].alpha *= CONFIG.TRAIL.OPACITY_DECAY;
     }
     // Remove faded trails
-    this.trails = this.trails.filter(t => t.alpha > 0.05);
+    this.trails = this.trails.filter((t) => t.alpha > 0.05);
   }
 
-  draw(ctx: CanvasRenderingContext2D, drawPlayer: (ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, alpha: number) => void): void {
+  draw(
+    ctx: CanvasRenderingContext2D,
+    drawPlayer: (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      angle: number,
+      alpha: number,
+    ) => void,
+  ): void {
     for (let i = this.trails.length - 1; i >= 0; i--) {
       const t = this.trails[i];
       drawPlayer(ctx, t.x, t.y, t.angle, t.alpha * 0.3);
@@ -690,24 +751,34 @@ class TrailRenderer {
 // ============================================================================
 
 class LightingSystem {
-  drawWheelGlow(ctx: CanvasRenderingContext2D, x: number, y: number, speed: number): void {
+  drawWheelGlow(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    speed: number,
+  ): void {
     const intensity = Math.min(speed / CONFIG.MOVEMENT.GROUND_SPEED_MAX, 1);
     const radius = CONFIG.LIGHTING.WHEEL_GLOW_RADIUS * (0.5 + intensity * 0.5);
 
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
     gradient.addColorStop(0, `rgba(78, 204, 163, ${0.4 * intensity})`);
     gradient.addColorStop(0.5, `rgba(78, 204, 163, ${0.15 * intensity})`);
-    gradient.addColorStop(1, 'rgba(78, 204, 163, 0)');
+    gradient.addColorStop(1, "rgba(78, 204, 163, 0)");
 
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = "lighter";
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = "source-over";
   }
 
-  drawGroundShadow(ctx: CanvasRenderingContext2D, playerX: number, groundY: number, angle: number): void {
+  drawGroundShadow(
+    ctx: CanvasRenderingContext2D,
+    playerX: number,
+    groundY: number,
+    angle: number,
+  ): void {
     const shadowLength = 60 + Math.abs(angle) * 40;
     const shadowDirection = angle > 0 ? 1 : -1;
 
@@ -718,12 +789,21 @@ class LightingSystem {
       groundY + 5,
       30 + Math.abs(angle) * 20,
       8,
-      0, 0, Math.PI * 2
+      0,
+      0,
+      Math.PI * 2,
     );
     ctx.fill();
   }
 
-  drawObstacleShadow(ctx: CanvasRenderingContext2D, obstacleX: number, obstacleWidth: number, groundY: number, height: number, lightX: number): void {
+  drawObstacleShadow(
+    ctx: CanvasRenderingContext2D,
+    obstacleX: number,
+    obstacleWidth: number,
+    groundY: number,
+    height: number,
+    lightX: number,
+  ): void {
     const dx = obstacleX - lightX;
     const shadowStretch = Math.abs(dx) * 0.02;
 
@@ -743,7 +823,7 @@ class LightingSystem {
 // ============================================================================
 
 class SettingsSystem {
-  private static STORAGE_KEY = 'unicycleHero_settings';
+  private static STORAGE_KEY = "unicycleHero_settings";
   private settings: Settings;
   private elements: {
     musicToggle: HTMLElement | null;
@@ -757,12 +837,12 @@ class SettingsSystem {
   constructor() {
     this.settings = this.load();
     this.elements = {
-      musicToggle: document.getElementById('toggle-music'),
-      fxToggle: document.getElementById('toggle-fx'),
-      hapticsToggle: document.getElementById('toggle-haptics'),
-      modal: document.getElementById('settings-modal'),
-      openBtn: document.getElementById('settings-btn'),
-      closeBtn: document.getElementById('close-settings'),
+      musicToggle: document.getElementById("toggle-music"),
+      fxToggle: document.getElementById("toggle-fx"),
+      hapticsToggle: document.getElementById("toggle-haptics"),
+      modal: document.getElementById("settings-modal"),
+      openBtn: document.getElementById("settings-btn"),
+      closeBtn: document.getElementById("close-settings"),
     };
     this.setupListeners();
     this.updateUI();
@@ -782,54 +862,60 @@ class SettingsSystem {
 
   private save(): void {
     try {
-      localStorage.setItem(SettingsSystem.STORAGE_KEY, JSON.stringify(this.settings));
+      localStorage.setItem(
+        SettingsSystem.STORAGE_KEY,
+        JSON.stringify(this.settings),
+      );
     } catch {
       // Ignore storage errors
     }
   }
 
   private updateUI(): void {
-    this.elements.musicToggle?.classList.toggle('active', this.settings.music);
-    this.elements.fxToggle?.classList.toggle('active', this.settings.fx);
-    this.elements.hapticsToggle?.classList.toggle('active', this.settings.haptics);
+    this.elements.musicToggle?.classList.toggle("active", this.settings.music);
+    this.elements.fxToggle?.classList.toggle("active", this.settings.fx);
+    this.elements.hapticsToggle?.classList.toggle(
+      "active",
+      this.settings.haptics,
+    );
   }
 
   private setupListeners(): void {
-    this.elements.musicToggle?.addEventListener('click', () => {
+    this.elements.musicToggle?.addEventListener("click", () => {
       this.settings.music = !this.settings.music;
       this.save();
       this.updateUI();
     });
 
-    this.elements.fxToggle?.addEventListener('click', () => {
+    this.elements.fxToggle?.addEventListener("click", () => {
       this.settings.fx = !this.settings.fx;
       this.save();
       this.updateUI();
     });
 
-    this.elements.hapticsToggle?.addEventListener('click', () => {
+    this.elements.hapticsToggle?.addEventListener("click", () => {
       this.settings.haptics = !this.settings.haptics;
       this.save();
       this.updateUI();
     });
 
-    this.elements.openBtn?.addEventListener('click', () => this.open());
-    this.elements.closeBtn?.addEventListener('click', () => this.close());
-    this.elements.modal?.addEventListener('click', (e) => {
+    this.elements.openBtn?.addEventListener("click", () => this.open());
+    this.elements.closeBtn?.addEventListener("click", () => this.close());
+    this.elements.modal?.addEventListener("click", (e) => {
       if (e.target === this.elements.modal) this.close();
     });
   }
 
   open(): void {
-    this.elements.modal?.classList.add('active');
+    this.elements.modal?.classList.add("active");
   }
 
   close(): void {
-    this.elements.modal?.classList.remove('active');
+    this.elements.modal?.classList.remove("active");
   }
 
   isOpen(): boolean {
-    return this.elements.modal?.classList.contains('active') ?? false;
+    return this.elements.modal?.classList.contains("active") ?? false;
   }
 
   get(): Settings {
@@ -837,7 +923,7 @@ class SettingsSystem {
   }
 
   setButtonVisible(visible: boolean): void {
-    this.elements.openBtn?.classList.toggle('hidden', !visible);
+    this.elements.openBtn?.classList.toggle("hidden", !visible);
   }
 }
 
@@ -846,59 +932,87 @@ class SettingsSystem {
 // ============================================================================
 
 class InputSystem {
-  private state: InputState = { leanLeft: false, leanRight: false, action: false };
+  private state: InputState = {
+    leanLeft: false,
+    leanRight: false,
+    action: false,
+  };
   private actionConsumed = false;
   private touchLeft: HTMLElement | null;
   private touchRight: HTMLElement | null;
-  private activeTouches = new Map<number, 'left' | 'right'>();
+  private activeTouches = new Map<number, "left" | "right">();
 
   constructor(private layout: Layout) {
-    this.touchLeft = document.getElementById('touch-left');
-    this.touchRight = document.getElementById('touch-right');
+    this.touchLeft = document.getElementById("touch-left");
+    this.touchRight = document.getElementById("touch-right");
     this.setupListeners();
   }
 
   private setupListeners(): void {
     // Keyboard
-    window.addEventListener('keydown', (e) => this.handleKeyDown(e));
-    window.addEventListener('keyup', (e) => this.handleKeyUp(e));
+    window.addEventListener("keydown", (e) => this.handleKeyDown(e));
+    window.addEventListener("keyup", (e) => this.handleKeyUp(e));
 
     // Touch zones
-    this.touchLeft?.addEventListener('touchstart', (e) => this.handleTouchStart(e, 'left'), { passive: false });
-    this.touchRight?.addEventListener('touchstart', (e) => this.handleTouchStart(e, 'right'), { passive: false });
-    this.touchLeft?.addEventListener('touchend', (e) => this.handleTouchEnd(e, 'left'), { passive: false });
-    this.touchRight?.addEventListener('touchend', (e) => this.handleTouchEnd(e, 'right'), { passive: false });
-    this.touchLeft?.addEventListener('touchcancel', (e) => this.handleTouchEnd(e, 'left'), { passive: false });
-    this.touchRight?.addEventListener('touchcancel', (e) => this.handleTouchEnd(e, 'right'), { passive: false });
+    this.touchLeft?.addEventListener(
+      "touchstart",
+      (e) => this.handleTouchStart(e, "left"),
+      { passive: false },
+    );
+    this.touchRight?.addEventListener(
+      "touchstart",
+      (e) => this.handleTouchStart(e, "right"),
+      { passive: false },
+    );
+    this.touchLeft?.addEventListener(
+      "touchend",
+      (e) => this.handleTouchEnd(e, "left"),
+      { passive: false },
+    );
+    this.touchRight?.addEventListener(
+      "touchend",
+      (e) => this.handleTouchEnd(e, "right"),
+      { passive: false },
+    );
+    this.touchLeft?.addEventListener(
+      "touchcancel",
+      (e) => this.handleTouchEnd(e, "left"),
+      { passive: false },
+    );
+    this.touchRight?.addEventListener(
+      "touchcancel",
+      (e) => this.handleTouchEnd(e, "right"),
+      { passive: false },
+    );
 
     // Mouse (desktop fallback)
-    window.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-    window.addEventListener('mouseup', () => this.handleMouseUp());
+    window.addEventListener("mousedown", (e) => this.handleMouseDown(e));
+    window.addEventListener("mouseup", () => this.handleMouseUp());
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+    if (e.code === "ArrowLeft" || e.code === "KeyA") {
       this.state.leanLeft = true;
     }
-    if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+    if (e.code === "ArrowRight" || e.code === "KeyD") {
       this.state.leanRight = true;
     }
-    if (e.code === 'Space' || e.code === 'Enter') {
+    if (e.code === "Space" || e.code === "Enter") {
       e.preventDefault();
       this.state.action = true;
     }
   }
 
   private handleKeyUp(e: KeyboardEvent): void {
-    if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+    if (e.code === "ArrowLeft" || e.code === "KeyA") {
       this.state.leanLeft = false;
     }
-    if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+    if (e.code === "ArrowRight" || e.code === "KeyD") {
       this.state.leanRight = false;
     }
   }
 
-  private handleTouchStart(e: TouchEvent, side: 'left' | 'right'): void {
+  private handleTouchStart(e: TouchEvent, side: "left" | "right"): void {
     e.preventDefault();
     for (const touch of Array.from(e.changedTouches)) {
       this.activeTouches.set(touch.identifier, side);
@@ -907,7 +1021,7 @@ class InputSystem {
     this.state.action = true;
   }
 
-  private handleTouchEnd(e: TouchEvent, _side: 'left' | 'right'): void {
+  private handleTouchEnd(e: TouchEvent, _side: "left" | "right"): void {
     e.preventDefault();
     for (const touch of Array.from(e.changedTouches)) {
       this.activeTouches.delete(touch.identifier);
@@ -919,8 +1033,8 @@ class InputSystem {
     let hasLeft = false;
     let hasRight = false;
     for (const side of this.activeTouches.values()) {
-      if (side === 'left') hasLeft = true;
-      if (side === 'right') hasRight = true;
+      if (side === "left") hasLeft = true;
+      if (side === "right") hasRight = true;
     }
     this.state.leanLeft = hasLeft;
     this.state.leanRight = hasRight;
@@ -928,7 +1042,8 @@ class InputSystem {
 
   private handleMouseDown(e: MouseEvent): void {
     // Ignore if clicking on UI elements
-    if ((e.target as HTMLElement).closest('#settings-btn, #settings-modal')) return;
+    if ((e.target as HTMLElement).closest("#settings-btn, #settings-modal"))
+      return;
 
     if (e.clientX < this.layout.width / 2) {
       this.state.leanLeft = true;
@@ -979,9 +1094,13 @@ class AudioSystem {
 
   private initContext(): void {
     if (!this.context) {
-      this.context = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      this.context = new (
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext
+      )();
     }
-    if (this.context.state === 'suspended') {
+    if (this.context.state === "suspended") {
       this.context.resume();
     }
   }
@@ -1053,7 +1172,7 @@ class AudioSystem {
 
     const osc = this.context.createOscillator();
     const gain = this.context.createGain();
-    osc.type = 'triangle';
+    osc.type = "triangle";
     osc.connect(gain);
     gain.connect(this.context.destination);
 
@@ -1072,7 +1191,7 @@ class AudioSystem {
 
     const osc = this.context.createOscillator();
     const gain = this.context.createGain();
-    osc.type = 'sawtooth';
+    osc.type = "sawtooth";
     osc.connect(gain);
     gain.connect(this.context.destination);
 
@@ -1095,7 +1214,7 @@ class HapticSystem {
 
   trigger(type: HapticType): void {
     if (!this.settings.get().haptics) return;
-    if (typeof window.triggerHaptic === 'function') {
+    if (typeof window.triggerHaptic === "function") {
       window.triggerHaptic(type);
     }
   }
@@ -1126,8 +1245,8 @@ class ParticleSystem {
       life: 0,
       maxLife: 0,
       size: 0,
-      color: '',
-      type: 'dust',
+      color: "",
+      type: "dust",
       rotation: 0,
       rotationSpeed: 0,
     };
@@ -1164,13 +1283,17 @@ class ParticleSystem {
     p.maxLife = p.life;
     p.size = Utils.randomRange(2, 5);
     p.color = CONFIG.COLORS.PARTICLE_DUST;
-    p.type = 'dust';
+    p.type = "dust";
     p.rotation = Utils.randomRange(0, Math.PI * 2);
     p.rotationSpeed = Utils.randomRange(-0.1, 0.1);
   }
 
   spawnSparks(x: number, y: number, count: number): void {
-    const colors = [CONFIG.COLORS.COIN, CONFIG.COLORS.PARTICLE_SPARK, '#ffffff'];
+    const colors = [
+      CONFIG.COLORS.COIN,
+      CONFIG.COLORS.PARTICLE_SPARK,
+      "#ffffff",
+    ];
     for (let i = 0; i < count; i++) {
       const p = this.acquire();
       if (!p) return;
@@ -1186,14 +1309,19 @@ class ParticleSystem {
       p.maxLife = p.life;
       p.size = Utils.randomRange(3, 7);
       p.color = colors[i % colors.length];
-      p.type = 'spark';
+      p.type = "spark";
       p.rotation = Utils.randomRange(0, Math.PI * 2);
       p.rotationSpeed = Utils.randomRange(-0.2, 0.2);
     }
   }
 
   spawnCrash(x: number, y: number): void {
-    const colors = [CONFIG.COLORS.PLAYER_BODY, CONFIG.COLORS.PLAYER_SKIN, '#ffffff', '#ff6b6b'];
+    const colors = [
+      CONFIG.COLORS.PLAYER_BODY,
+      CONFIG.COLORS.PLAYER_SKIN,
+      "#ffffff",
+      "#ff6b6b",
+    ];
     for (let i = 0; i < CONFIG.PARTICLES.CRASH_COUNT; i++) {
       const p = this.acquire();
       if (!p) return;
@@ -1209,7 +1337,7 @@ class ParticleSystem {
       p.maxLife = p.life;
       p.size = Utils.randomRange(4, 10);
       p.color = colors[Utils.randomInt(0, colors.length - 1)];
-      p.type = 'crash';
+      p.type = "crash";
       p.rotation = Utils.randomRange(0, Math.PI * 2);
       p.rotationSpeed = Utils.randomRange(-0.3, 0.3);
     }
@@ -1230,8 +1358,8 @@ class ParticleSystem {
       p.life = Utils.randomRange(300, 600);
       p.maxLife = p.life;
       p.size = Utils.randomRange(6, 10);
-      p.color = '#ffffff';
-      p.type = 'star';
+      p.color = "#ffffff";
+      p.type = "star";
       p.rotation = Utils.randomRange(0, Math.PI * 2);
       p.rotationSpeed = Utils.randomRange(-0.1, 0.1);
     }
@@ -1266,7 +1394,7 @@ class ParticleSystem {
       ctx.rotate(p.rotation);
       ctx.globalAlpha = alpha;
 
-      if (p.type === 'star') {
+      if (p.type === "star") {
         // Draw star shape
         ctx.fillStyle = p.color;
         ctx.beginPath();
@@ -1319,7 +1447,7 @@ class FeedbackSystem {
     active: false,
     duration: 0,
     elapsed: 0,
-    color: '#ffffff',
+    color: "#ffffff",
   };
   private freezeTimer = 0;
   private dangerLevel = 0;
@@ -1330,51 +1458,51 @@ class FeedbackSystem {
   constructor(
     private audio: AudioSystem,
     private haptics: HapticSystem,
-    private particles: ParticleSystem
+    private particles: ParticleSystem,
   ) {
-    this.dangerOverlay = document.getElementById('danger-overlay');
-    this.flashOverlay = document.getElementById('flash-overlay');
+    this.dangerOverlay = document.getElementById("danger-overlay");
+    this.flashOverlay = document.getElementById("flash-overlay");
   }
 
   trigger(type: FeedbackType, x = 0, y = 0): void {
     switch (type) {
-      case 'coinCollect':
+      case "coinCollect":
         this.audio.playCoin();
-        this.haptics.trigger('medium');
+        this.haptics.trigger("medium");
         this.addShake(3, 100);
         this.addFreeze(CONFIG.FEEDBACK.FREEZE_COIN);
         this.particles.spawnSparks(x, y, CONFIG.PARTICLES.SPARK_COUNT);
-        this.addFlash('#ffd700', 60);
+        this.addFlash("#ffd700", 60);
         break;
 
-      case 'obstaclePass':
+      case "obstaclePass":
         this.audio.playPass();
-        this.haptics.trigger('light');
+        this.haptics.trigger("light");
         this.particles.spawnStars(x, y, 5);
         break;
 
-      case 'nearMiss':
-        this.haptics.trigger('light');
+      case "nearMiss":
+        this.haptics.trigger("light");
         this.addShake(1.5, 50);
         break;
 
-      case 'wobble':
+      case "wobble":
         this.audio.playWobble();
-        this.haptics.trigger('light');
+        this.haptics.trigger("light");
         break;
 
-      case 'fall':
+      case "fall":
         this.audio.playFall();
-        this.haptics.trigger('error');
+        this.haptics.trigger("error");
         this.addShake(12, 400);
         this.addFreeze(CONFIG.FEEDBACK.FREEZE_CRASH);
         this.particles.spawnCrash(x, y);
-        this.addFlash('#ff4444', 100);
+        this.addFlash("#ff4444", 100);
         break;
 
-      case 'start':
+      case "start":
         this.audio.playStart();
-        this.haptics.trigger('medium');
+        this.haptics.trigger("medium");
         break;
     }
   }
@@ -1441,7 +1569,7 @@ class FeedbackSystem {
         this.flashOverlay.style.backgroundColor = this.flash.color;
         this.flashOverlay.style.opacity = String(opacity * 0.5);
       } else {
-        this.flashOverlay.style.opacity = '0';
+        this.flashOverlay.style.opacity = "0";
       }
     }
   }
@@ -1461,8 +1589,8 @@ class FeedbackSystem {
     this.freezeTimer = 0;
     this.flash.active = false;
     this.dangerLevel = 0;
-    if (this.dangerOverlay) this.dangerOverlay.style.opacity = '0';
-    if (this.flashOverlay) this.flashOverlay.style.opacity = '0';
+    if (this.dangerOverlay) this.dangerOverlay.style.opacity = "0";
+    if (this.flashOverlay) this.flashOverlay.style.opacity = "0";
   }
 }
 
@@ -1483,7 +1611,8 @@ class PhysicsSystem {
     }
 
     // Apply gravity torque
-    player.angularVelocity += Math.sin(player.angle) * CONFIG.PHYSICS.GRAVITY_TORQUE * dtNorm;
+    player.angularVelocity +=
+      Math.sin(player.angle) * CONFIG.PHYSICS.GRAVITY_TORQUE * dtNorm;
 
     // Apply friction
     player.angularVelocity *= Math.pow(CONFIG.PHYSICS.ANGULAR_FRICTION, dtNorm);
@@ -1492,17 +1621,27 @@ class PhysicsSystem {
     player.angularVelocity = Utils.clamp(
       player.angularVelocity,
       -CONFIG.PHYSICS.MAX_ANGULAR_VELOCITY,
-      CONFIG.PHYSICS.MAX_ANGULAR_VELOCITY
+      CONFIG.PHYSICS.MAX_ANGULAR_VELOCITY,
     );
 
     // Update angle
     player.angle += player.angularVelocity * dtNorm;
 
     // Update squash/stretch based on angular velocity
-    const targetSquashX = 1 - Math.abs(player.angularVelocity) * CONFIG.PHYSICS.SQUASH_INTENSITY;
-    const targetSquashY = 1 + Math.abs(player.angularVelocity) * CONFIG.PHYSICS.SQUASH_INTENSITY;
-    player.squashX = Utils.lerp(player.squashX, targetSquashX, CONFIG.PHYSICS.SQUASH_RECOVERY * dtNorm);
-    player.squashY = Utils.lerp(player.squashY, targetSquashY, CONFIG.PHYSICS.SQUASH_RECOVERY * dtNorm);
+    const targetSquashX =
+      1 - Math.abs(player.angularVelocity) * CONFIG.PHYSICS.SQUASH_INTENSITY;
+    const targetSquashY =
+      1 + Math.abs(player.angularVelocity) * CONFIG.PHYSICS.SQUASH_INTENSITY;
+    player.squashX = Utils.lerp(
+      player.squashX,
+      targetSquashX,
+      CONFIG.PHYSICS.SQUASH_RECOVERY * dtNorm,
+    );
+    player.squashY = Utils.lerp(
+      player.squashY,
+      targetSquashY,
+      CONFIG.PHYSICS.SQUASH_RECOVERY * dtNorm,
+    );
 
     // Update arm spread based on angular velocity
     player.armSpread = 30 + Math.abs(player.angularVelocity) * 200;
@@ -1513,12 +1652,20 @@ class PhysicsSystem {
   }
 
   getDangerLevel(player: Player): number {
-    const threshold = CONFIG.PHYSICS.FALL_ANGLE * CONFIG.PHYSICS.WOBBLE_DANGER_ZONE;
+    const threshold =
+      CONFIG.PHYSICS.FALL_ANGLE * CONFIG.PHYSICS.WOBBLE_DANGER_ZONE;
     if (Math.abs(player.angle) < threshold) return 0;
-    return (Math.abs(player.angle) - threshold) / (CONFIG.PHYSICS.FALL_ANGLE - threshold);
+    return (
+      (Math.abs(player.angle) - threshold) /
+      (CONFIG.PHYSICS.FALL_ANGLE - threshold)
+    );
   }
 
-  checkObstacleCollision(player: Player, obstacle: Obstacle, groundY: number): boolean {
+  checkObstacleCollision(
+    player: Player,
+    obstacle: Obstacle,
+    groundY: number,
+  ): boolean {
     const wheelX = player.x;
     const wheelY = groundY - CONFIG.PLAYER.WHEEL_RADIUS;
     const wheelR = CONFIG.PLAYER.WHEEL_RADIUS;
@@ -1526,7 +1673,11 @@ class PhysicsSystem {
     const obstacleTop = groundY - obstacle.height;
 
     // Circle-rectangle collision
-    const closestX = Utils.clamp(wheelX, obstacle.x, obstacle.x + obstacle.width);
+    const closestX = Utils.clamp(
+      wheelX,
+      obstacle.x,
+      obstacle.x + obstacle.width,
+    );
     const closestY = Utils.clamp(wheelY, obstacleTop, groundY);
 
     const dx = wheelX - closestX;
@@ -1535,9 +1686,18 @@ class PhysicsSystem {
     return dx * dx + dy * dy < wheelR * wheelR;
   }
 
-  checkCoinCollision(player: Player, coin: Coin, groundY: number, time: number): boolean {
-    const bodyY = groundY - CONFIG.PLAYER.WHEEL_RADIUS - CONFIG.PLAYER.BODY_HEIGHT / 2;
-    const coinY = coin.y + Math.sin(time * CONFIG.COINS.BOB_SPEED + coin.bobOffset) * CONFIG.COINS.BOB_AMPLITUDE;
+  checkCoinCollision(
+    player: Player,
+    coin: Coin,
+    groundY: number,
+    time: number,
+  ): boolean {
+    const bodyY =
+      groundY - CONFIG.PLAYER.WHEEL_RADIUS - CONFIG.PLAYER.BODY_HEIGHT / 2;
+    const coinY =
+      coin.y +
+      Math.sin(time * CONFIG.COINS.BOB_SPEED + coin.bobOffset) *
+        CONFIG.COINS.BOB_AMPLITUDE;
 
     const dx = player.x - coin.x;
     const dy = bodyY - coinY;
@@ -1556,7 +1716,10 @@ class GameObjectSystem {
   private nextObstacleDistance = CONFIG.OBSTACLES.MIN_GAP;
 
   createObstacle(x: number): void {
-    const height = Utils.randomRange(CONFIG.OBSTACLES.MIN_HEIGHT, CONFIG.OBSTACLES.MAX_HEIGHT);
+    const height = Utils.randomRange(
+      CONFIG.OBSTACLES.MIN_HEIGHT,
+      CONFIG.OBSTACLES.MAX_HEIGHT,
+    );
     this.obstacles.push({
       x,
       width: CONFIG.OBSTACLES.WIDTH,
@@ -1580,7 +1743,11 @@ class GameObjectSystem {
     });
   }
 
-  update(groundSpeed: number, dt: number, layout: Layout): { spawned: boolean } {
+  update(
+    groundSpeed: number,
+    dt: number,
+    layout: Layout,
+  ): { spawned: boolean } {
     const dtNorm = dt / 16.67;
     let spawned = false;
 
@@ -1594,11 +1761,14 @@ class GameObjectSystem {
         const lastObstacle = this.obstacles[this.obstacles.length - 1];
         this.createCoin(
           layout.width + 50 + CONFIG.OBSTACLES.WIDTH / 2,
-          layout.groundY - lastObstacle.height - 60 - CONFIG.COINS.RADIUS
+          layout.groundY - lastObstacle.height - 60 - CONFIG.COINS.RADIUS,
         );
       }
 
-      this.nextObstacleDistance = Utils.randomRange(CONFIG.OBSTACLES.MIN_GAP, CONFIG.OBSTACLES.MAX_GAP);
+      this.nextObstacleDistance = Utils.randomRange(
+        CONFIG.OBSTACLES.MIN_GAP,
+        CONFIG.OBSTACLES.MAX_GAP,
+      );
       spawned = true;
     }
 
@@ -1656,29 +1826,29 @@ class UISystem {
   private scorePopTimeout: number | null = null;
 
   constructor() {
-    this.hud = document.getElementById('hud');
-    this.scoreDisplay = document.getElementById('score-display');
-    this.speedSegments = document.querySelectorAll('.speed-segment');
-    this.controlHints = document.getElementById('control-hints');
-    this.mobileHints = document.getElementById('mobile-hints');
+    this.hud = document.getElementById("hud");
+    this.scoreDisplay = document.getElementById("score-display");
+    this.speedSegments = document.querySelectorAll(".speed-segment");
+    this.controlHints = document.getElementById("control-hints");
+    this.mobileHints = document.getElementById("mobile-hints");
   }
 
   showHUD(): void {
-    this.hud?.classList.remove('hidden');
+    this.hud?.classList.remove("hidden");
   }
 
   hideHUD(): void {
-    this.hud?.classList.add('hidden');
+    this.hud?.classList.add("hidden");
   }
 
   showHints(): void {
-    this.controlHints?.classList.add('visible');
-    this.mobileHints?.classList.add('visible');
+    this.controlHints?.classList.add("visible");
+    this.mobileHints?.classList.add("visible");
   }
 
   hideHints(): void {
-    this.controlHints?.classList.remove('visible');
-    this.mobileHints?.classList.remove('visible');
+    this.controlHints?.classList.remove("visible");
+    this.mobileHints?.classList.remove("visible");
   }
 
   updateScore(score: number): void {
@@ -1687,10 +1857,10 @@ class UISystem {
       this.lastScore = score;
 
       // Pop animation
-      this.scoreDisplay.classList.add('pop');
+      this.scoreDisplay.classList.add("pop");
       if (this.scorePopTimeout) clearTimeout(this.scorePopTimeout);
       this.scorePopTimeout = window.setTimeout(() => {
-        this.scoreDisplay?.classList.remove('pop');
+        this.scoreDisplay?.classList.remove("pop");
       }, 150);
     }
   }
@@ -1698,7 +1868,7 @@ class UISystem {
   updateSpeedBar(speedPercent: number): void {
     const activeCount = Math.ceil(speedPercent * this.speedSegments.length);
     this.speedSegments.forEach((seg, i) => {
-      seg.classList.toggle('active', i < activeCount);
+      seg.classList.toggle("active", i < activeCount);
     });
   }
 
@@ -1721,14 +1891,19 @@ class RenderSystem {
   private time = 0;
 
   // Pre-computed cloud positions (NO random in render!)
-  private clouds: Array<{ x: number; y: number; scale: number; speed: number }> = [];
+  private clouds: Array<{
+    x: number;
+    y: number;
+    scale: number;
+    speed: number;
+  }> = [];
 
   constructor(
     private bgCanvas: HTMLCanvasElement,
-    private gameCanvas: HTMLCanvasElement
+    private gameCanvas: HTMLCanvasElement,
   ) {
-    this.bgCtx = bgCanvas.getContext('2d')!;
-    this.ctx = gameCanvas.getContext('2d')!;
+    this.bgCtx = bgCanvas.getContext("2d")!;
+    this.ctx = gameCanvas.getContext("2d")!;
     this.generateClouds();
   }
 
@@ -1774,7 +1949,7 @@ class RenderSystem {
     ctx.fillRect(0, 0, width, height);
 
     // Clouds (static, pre-computed positions)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
     for (const cloud of this.clouds) {
       const x = cloud.x % width;
       this.drawCloud(ctx, x, cloud.y, cloud.scale);
@@ -1783,7 +1958,12 @@ class RenderSystem {
     this.bgDrawn = true;
   }
 
-  private drawCloud(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): void {
+  private drawCloud(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    scale: number,
+  ): void {
     ctx.beginPath();
     ctx.arc(x, y, 30 * scale, 0, Math.PI * 2);
     ctx.arc(x + 25 * scale, y - 10 * scale, 25 * scale, 0, Math.PI * 2);
@@ -1833,8 +2013,13 @@ class RenderSystem {
     const top = groundY - height;
 
     // Shadow
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    this.ctx.fillRect(Math.round(x + shadowOffset), Math.round(top + shadowOffset), width, height);
+    this.ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+    this.ctx.fillRect(
+      Math.round(x + shadowOffset),
+      Math.round(top + shadowOffset),
+      width,
+      height,
+    );
 
     // Main body
     this.ctx.fillStyle = CONFIG.COLORS.OBSTACLE;
@@ -1850,7 +2035,10 @@ class RenderSystem {
   }
 
   drawCoin(coin: Coin, groundY: number): void {
-    const bobY = coin.y + Math.sin(this.time * CONFIG.COINS.BOB_SPEED + coin.bobOffset) * CONFIG.COINS.BOB_AMPLITUDE;
+    const bobY =
+      coin.y +
+      Math.sin(this.time * CONFIG.COINS.BOB_SPEED + coin.bobOffset) *
+        CONFIG.COINS.BOB_AMPLITUDE;
     const x = Math.round(coin.x);
     const y = Math.round(bobY);
 
@@ -1875,7 +2063,7 @@ class RenderSystem {
     // Shine
     this.ctx.beginPath();
     this.ctx.arc(x - 4, y - 4, 4, 0, Math.PI * 2);
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    this.ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
     this.ctx.fill();
   }
 
@@ -1903,7 +2091,7 @@ class RenderSystem {
       this.ctx.moveTo(0, 0);
       this.ctx.lineTo(
         Math.cos(angle) * CONFIG.PLAYER.WHEEL_RADIUS * 0.8,
-        Math.sin(angle) * CONFIG.PLAYER.WHEEL_RADIUS * 0.8
+        Math.sin(angle) * CONFIG.PLAYER.WHEEL_RADIUS * 0.8,
       );
       this.ctx.stroke();
     }
@@ -1911,17 +2099,25 @@ class RenderSystem {
     // Wheel center
     this.ctx.beginPath();
     this.ctx.arc(0, 0, 5, 0, Math.PI * 2);
-    this.ctx.fillStyle = '#666688';
+    this.ctx.fillStyle = "#666688";
     this.ctx.fill();
 
     // Seat post
-    this.ctx.fillStyle = '#555577';
+    this.ctx.fillStyle = "#555577";
     this.ctx.fillRect(-3, -CONFIG.PLAYER.WHEEL_RADIUS - 20, 6, 20);
 
     // Seat
     this.ctx.fillStyle = CONFIG.COLORS.PLAYER_WHEEL;
     this.ctx.beginPath();
-    this.ctx.ellipse(0, -CONFIG.PLAYER.WHEEL_RADIUS - 22, 15, 6, 0, 0, Math.PI * 2);
+    this.ctx.ellipse(
+      0,
+      -CONFIG.PLAYER.WHEEL_RADIUS - 22,
+      15,
+      6,
+      0,
+      0,
+      Math.PI * 2,
+    );
     this.ctx.fill();
 
     // Body
@@ -1942,7 +2138,7 @@ class RenderSystem {
     const armOffset = player.angularVelocity * 80;
     this.ctx.strokeStyle = CONFIG.COLORS.PLAYER_SKIN;
     this.ctx.lineWidth = 6;
-    this.ctx.lineCap = 'round';
+    this.ctx.lineCap = "round";
 
     // Left arm
     this.ctx.beginPath();
@@ -1957,21 +2153,22 @@ class RenderSystem {
     this.ctx.stroke();
 
     // Head
-    const headY = bodyY - CONFIG.PLAYER.BODY_HEIGHT - CONFIG.PLAYER.HEAD_RADIUS + 15;
+    const headY =
+      bodyY - CONFIG.PLAYER.BODY_HEIGHT - CONFIG.PLAYER.HEAD_RADIUS + 15;
     this.ctx.beginPath();
     this.ctx.arc(0, headY, CONFIG.PLAYER.HEAD_RADIUS, 0, Math.PI * 2);
     this.ctx.fillStyle = CONFIG.COLORS.PLAYER_SKIN;
     this.ctx.fill();
 
     // Hair
-    this.ctx.fillStyle = '#4a3728';
+    this.ctx.fillStyle = "#4a3728";
     this.ctx.beginPath();
     this.ctx.arc(0, headY - 4, CONFIG.PLAYER.HEAD_RADIUS, Math.PI, 0, false);
     this.ctx.fill();
 
     // Eyes (follow lean direction)
     const eyeOffset = player.angularVelocity * 3;
-    this.ctx.fillStyle = '#333';
+    this.ctx.fillStyle = "#333";
     this.ctx.beginPath();
     this.ctx.arc(-5 + eyeOffset, headY - 2, 2.5, 0, Math.PI * 2);
     this.ctx.arc(5 + eyeOffset, headY - 2, 2.5, 0, Math.PI * 2);
@@ -1979,7 +2176,7 @@ class RenderSystem {
 
     // Expression based on danger
     const danger = Math.abs(player.angle) / CONFIG.PHYSICS.FALL_ANGLE;
-    this.ctx.strokeStyle = '#333';
+    this.ctx.strokeStyle = "#333";
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
     if (danger > 0.5) {
@@ -2002,41 +2199,43 @@ class RenderSystem {
     const ctx = this.ctx;
 
     // Overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     ctx.fillRect(0, 0, width, height);
 
     // Title
     ctx.fillStyle = CONFIG.COLORS.TEXT;
-    ctx.font = 'bold 52px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+    ctx.font = "bold 52px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
     ctx.shadowBlur = 8;
-    ctx.fillText('Unicycle Hero', width / 2, height / 2 - 80);
+    ctx.fillText("Unicycle Hero", width / 2, height / 2 - 80);
 
     // Subtitle
-    ctx.font = '20px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = "20px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
     ctx.shadowBlur = 0;
-    ctx.fillText('Balance Challenge', width / 2, height / 2 - 35);
+    ctx.fillText("Balance Challenge", width / 2, height / 2 - 35);
 
     // Instructions
-    ctx.font = '18px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    const instruction = layout.isMobile ? 'Tap left or right to balance' : 'Use A/D or Arrow Keys';
+    ctx.font = "18px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+    const instruction = layout.isMobile
+      ? "Tap left or right to balance"
+      : "Use A/D or Arrow Keys";
     ctx.fillText(instruction, width / 2, height / 2 + 20);
 
     // Start prompt (pulsing)
     const pulse = 0.7 + Math.sin(this.time * 0.005) * 0.3;
     ctx.globalAlpha = pulse;
-    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.font = "bold 24px -apple-system, BlinkMacSystemFont, sans-serif";
     ctx.fillStyle = CONFIG.COLORS.COIN;
-    const startText = layout.isMobile ? 'Tap to Start' : 'Press Space';
+    const startText = layout.isMobile ? "Tap to Start" : "Press Space";
     ctx.fillText(startText, width / 2, height / 2 + 80);
     ctx.globalAlpha = 1;
 
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
   }
 
   drawGameOverScreen(layout: Layout, score: number): void {
@@ -2044,35 +2243,35 @@ class RenderSystem {
     const ctx = this.ctx;
 
     // Overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
     ctx.fillRect(0, 0, width, height);
 
     // Game Over text
     ctx.fillStyle = CONFIG.COLORS.OBSTACLE;
-    ctx.font = 'bold 48px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.font = "bold 48px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
     ctx.shadowBlur = 8;
-    ctx.fillText('Game Over', width / 2, height / 2 - 60);
+    ctx.fillText("Game Over", width / 2, height / 2 - 60);
 
     // Score
     ctx.fillStyle = CONFIG.COLORS.TEXT;
-    ctx.font = 'bold 40px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.font = "bold 40px -apple-system, BlinkMacSystemFont, sans-serif";
     ctx.shadowBlur = 0;
     ctx.fillText(`Score: ${score}`, width / 2, height / 2 + 10);
 
     // Retry prompt (pulsing)
     const pulse = 0.7 + Math.sin(this.time * 0.005) * 0.3;
     ctx.globalAlpha = pulse;
-    ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, sans-serif";
     ctx.fillStyle = CONFIG.COLORS.GROUND;
-    const retryText = layout.isMobile ? 'Tap to Retry' : 'Press Space';
+    const retryText = layout.isMobile ? "Tap to Retry" : "Press Space";
     ctx.fillText(retryText, width / 2, height / 2 + 80);
     ctx.globalAlpha = 1;
 
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
   }
 
   getTime(): number {
@@ -2086,7 +2285,7 @@ class RenderSystem {
 
 class GameEngine {
   // Core state
-  private state: GameState = 'start';
+  private state: GameState = "start";
   private score = 0;
   private distance = 0;
   private groundSpeed = CONFIG.MOVEMENT.GROUND_SPEED_INITIAL;
@@ -2140,21 +2339,30 @@ class GameEngine {
     this.audio = new AudioSystem(this.settings);
     this.haptics = new HapticSystem(this.settings);
     this.particles = new ParticleSystem();
-    this.feedback = new FeedbackSystem(this.audio, this.haptics, this.particles);
+    this.feedback = new FeedbackSystem(
+      this.audio,
+      this.haptics,
+      this.particles,
+    );
     this.physics = new PhysicsSystem();
     this.gameObjects = new GameObjectSystem();
     this.ui = new UISystem();
 
     // Initialize render system
-    const bgCanvas = document.getElementById('bg-canvas') as HTMLCanvasElement;
-    const gameCanvas = document.getElementById('game-canvas') as HTMLCanvasElement;
+    const bgCanvas = document.getElementById("bg-canvas") as HTMLCanvasElement;
+    const gameCanvas = document.getElementById(
+      "game-canvas",
+    ) as HTMLCanvasElement;
     this.render = new RenderSystem(bgCanvas, gameCanvas);
 
     // Initialize AAA systems
     this.verlet = new VerletSystem();
     this.camera = new CameraSystem(this.layout.width, this.layout.height);
     this.timeDilation = new TimeDilationSystem();
-    this.postProcess = new PostProcessingSystem(this.layout.width, this.layout.height);
+    this.postProcess = new PostProcessingSystem(
+      this.layout.width,
+      this.layout.height,
+    );
     this.trail = new TrailRenderer();
     this.lighting = new LightingSystem();
 
@@ -2169,14 +2377,16 @@ class GameEngine {
   private calculateLayout(): Layout {
     const width = window.innerWidth;
     const height = window.innerHeight;
-    const isMobile = window.matchMedia('(pointer: coarse)').matches;
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
     return {
       width,
       height,
       groundY: height - CONFIG.MOVEMENT.GROUND_HEIGHT,
       playerX: width * 0.25,
-      safeAreaTop: isMobile ? CONFIG.LAYOUT.SAFE_AREA_MOBILE : CONFIG.LAYOUT.SAFE_AREA_DESKTOP,
+      safeAreaTop: isMobile
+        ? CONFIG.LAYOUT.SAFE_AREA_MOBILE
+        : CONFIG.LAYOUT.SAFE_AREA_DESKTOP,
       isMobile,
     };
   }
@@ -2195,17 +2405,17 @@ class GameEngine {
   }
 
   private setupEventListeners(): void {
-    window.addEventListener('resize', () => this.resize());
+    window.addEventListener("resize", () => this.resize());
 
     // Focus handling
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.state === 'playing') {
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && this.state === "playing") {
         this.pause();
       }
     });
 
-    window.addEventListener('blur', () => {
-      if (this.state === 'playing') {
+    window.addEventListener("blur", () => {
+      if (this.state === "playing") {
         this.pause();
       }
     });
@@ -2221,7 +2431,10 @@ class GameEngine {
   }
 
   private gameLoop(currentTime: number): void {
-    const rawFrameTime = Math.min(currentTime - this.lastTime, CONFIG.TIMING.MAX_FRAME_TIME);
+    const rawFrameTime = Math.min(
+      currentTime - this.lastTime,
+      CONFIG.TIMING.MAX_FRAME_TIME,
+    );
     this.lastTime = currentTime;
 
     // Handle settings modal
@@ -2240,7 +2453,7 @@ class GameEngine {
     const frameTime = rawFrameTime * timeScale;
 
     // Update based on state
-    if (this.state === 'playing' && !this.feedback.isFrozen()) {
+    if (this.state === "playing" && !this.feedback.isFrozen()) {
       this.accumulator += frameTime;
 
       // Fixed timestep physics
@@ -2251,16 +2464,29 @@ class GameEngine {
 
       // Update AAA systems
       const neckX = this.player.x - Math.sin(this.player.angle) * 50;
-      const neckY = this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS - CONFIG.PLAYER.BODY_HEIGHT - 10;
+      const neckY =
+        this.layout.groundY -
+        CONFIG.PLAYER.WHEEL_RADIUS -
+        CONFIG.PLAYER.BODY_HEIGHT -
+        10;
       const windX = -this.groundSpeed * 0.5;
       this.verlet.update(neckX, neckY, this.player.angle, frameTime, windX);
 
       // Update camera
-      this.camera.update(this.player.x, this.layout.groundY, this.groundSpeed, frameTime);
+      this.camera.update(
+        this.player.x,
+        this.layout.groundY,
+        this.groundSpeed,
+        frameTime,
+      );
 
       // Update trail
       if (this.groundSpeed > CONFIG.MOVEMENT.GROUND_SPEED_INITIAL * 1.5) {
-        this.trail.addPoint(this.player.x, this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS, this.player.angle);
+        this.trail.addPoint(
+          this.player.x,
+          this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS,
+          this.player.angle,
+        );
       }
       this.trail.update();
     }
@@ -2280,45 +2506,49 @@ class GameEngine {
   }
 
   private handleAction(): void {
-    if (this.state === 'start') {
+    if (this.state === "start") {
       this.start();
-    } else if (this.state === 'gameOver') {
+    } else if (this.state === "gameOver") {
       this.reset();
-    } else if (this.state === 'paused') {
+    } else if (this.state === "paused") {
       this.resume();
     }
   }
 
   private start(): void {
-    this.state = 'playing';
-    this.feedback.trigger('start');
+    this.state = "playing";
+    this.feedback.trigger("start");
     this.ui.showHUD();
     this.ui.hideHints();
     this.settings.setButtonVisible(true);
   }
 
   private pause(): void {
-    this.state = 'paused';
+    this.state = "paused";
   }
 
   private resume(): void {
-    this.state = 'playing';
+    this.state = "playing";
   }
 
   private gameOver(): void {
-    this.state = 'gameOver';
-    this.feedback.trigger('fall', this.player.x, this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS);
+    this.state = "gameOver";
+    this.feedback.trigger(
+      "fall",
+      this.player.x,
+      this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS,
+    );
     this.ui.hideHUD();
     this.settings.setButtonVisible(false);
 
     // Submit score
-    if (typeof window.submitScore === 'function') {
+    if (typeof window.submitScore === "function") {
       window.submitScore(this.score);
     }
   }
 
   private reset(): void {
-    this.state = 'start';
+    this.state = "start";
     this.score = 0;
     this.distance = 0;
     this.groundSpeed = CONFIG.MOVEMENT.GROUND_SPEED_INITIAL;
@@ -2351,7 +2581,7 @@ class GameEngine {
 
     // Trigger wobble feedback at high danger
     if (danger > 0.7 && Math.random() < 0.05) {
-      this.feedback.trigger('wobble');
+      this.feedback.trigger("wobble");
     }
 
     // AAA: Trigger slow-mo on near-miss (high danger recovery)
@@ -2359,14 +2589,14 @@ class GameEngine {
     if (danger > 0.85 && now - this.lastNearMissTime > 2000) {
       this.timeDilation.triggerSlowMo(600);
       this.camera.triggerImpactZoom();
-      this.feedback.trigger('nearMiss', this.player.x, this.layout.groundY);
+      this.feedback.trigger("nearMiss", this.player.x, this.layout.groundY);
       this.lastNearMissTime = now;
     }
 
     // Update ground speed (difficulty progression)
     this.groundSpeed = Math.min(
       this.groundSpeed + CONFIG.MOVEMENT.SPEED_INCREMENT * (dt / 16.67),
-      CONFIG.MOVEMENT.GROUND_SPEED_MAX
+      CONFIG.MOVEMENT.GROUND_SPEED_MAX,
     );
 
     // Update distance and score
@@ -2394,7 +2624,7 @@ class GameEngine {
     if (this.dustAccumulator > 50 / this.groundSpeed) {
       this.particles.spawnDust(
         this.player.x - CONFIG.PLAYER.WHEEL_RADIUS * 0.5,
-        this.layout.groundY
+        this.layout.groundY,
       );
       this.dustAccumulator = 0;
     }
@@ -2403,32 +2633,55 @@ class GameEngine {
   private checkCollisions(): void {
     // Check obstacle collisions
     for (const obstacle of this.gameObjects.getObstacles()) {
-      if (this.physics.checkObstacleCollision(this.player, obstacle, this.layout.groundY)) {
+      if (
+        this.physics.checkObstacleCollision(
+          this.player,
+          obstacle,
+          this.layout.groundY,
+        )
+      ) {
         this.gameOver();
         return;
       }
 
       // Check if passed
-      if (!obstacle.passed && obstacle.x + obstacle.width < this.player.x - CONFIG.PLAYER.WHEEL_RADIUS) {
+      if (
+        !obstacle.passed &&
+        obstacle.x + obstacle.width < this.player.x - CONFIG.PLAYER.WHEEL_RADIUS
+      ) {
         this.gameObjects.markObstaclePassed(obstacle);
         this.score += 5;
-        this.feedback.trigger('obstaclePass', obstacle.x + obstacle.width / 2, this.layout.groundY - obstacle.height);
+        this.feedback.trigger(
+          "obstaclePass",
+          obstacle.x + obstacle.width / 2,
+          this.layout.groundY - obstacle.height,
+        );
       }
     }
 
     // Check coin collisions
     for (const coin of this.gameObjects.getCoins()) {
-      if (!coin.collected && this.physics.checkCoinCollision(this.player, coin, this.layout.groundY, this.render.getTime())) {
+      if (
+        !coin.collected &&
+        this.physics.checkCoinCollision(
+          this.player,
+          coin,
+          this.layout.groundY,
+          this.render.getTime(),
+        )
+      ) {
         this.gameObjects.collectCoin(coin);
         this.score += CONFIG.COINS.VALUE;
-        this.feedback.trigger('coinCollect', coin.x, coin.y);
+        this.feedback.trigger("coinCollect", coin.x, coin.y);
       }
     }
   }
 
   private renderFrame(): void {
-    const gameCanvas = document.getElementById('game-canvas') as HTMLCanvasElement;
-    const ctx = gameCanvas.getContext('2d')!;
+    const gameCanvas = document.getElementById(
+      "game-canvas",
+    ) as HTMLCanvasElement;
+    const ctx = gameCanvas.getContext("2d")!;
 
     // Draw static background
     this.render.drawBackground(this.layout);
@@ -2441,12 +2694,17 @@ class GameEngine {
     this.render.applyShake(shakeOffset);
 
     // AAA: Apply camera transform
-    if (this.state === 'playing') {
+    if (this.state === "playing") {
       this.camera.applyTransform(ctx, this.layout.width, this.layout.height);
     }
 
     // AAA: Draw dynamic lighting - ground shadow
-    this.lighting.drawGroundShadow(ctx, this.player.x, this.layout.groundY, this.player.angle);
+    this.lighting.drawGroundShadow(
+      ctx,
+      this.player.x,
+      this.layout.groundY,
+      this.player.angle,
+    );
 
     // Draw ground
     this.render.drawGround(this.layout);
@@ -2459,7 +2717,7 @@ class GameEngine {
         obstacle.width,
         this.layout.groundY,
         obstacle.height,
-        this.player.x
+        this.player.x,
       );
     }
 
@@ -2478,7 +2736,11 @@ class GameEngine {
     // AAA: Draw motion trail
     this.trail.draw(ctx, (c, x, y, angle, alpha) => {
       c.globalAlpha = alpha;
-      this.render.drawPlayer({ ...this.player, x, angle }, this.layout.groundY, this.groundSpeed);
+      this.render.drawPlayer(
+        { ...this.player, x, angle },
+        this.layout.groundY,
+        this.groundSpeed,
+      );
       c.globalAlpha = 1;
     });
 
@@ -2493,7 +2755,7 @@ class GameEngine {
       ctx,
       this.player.x,
       this.layout.groundY - CONFIG.PLAYER.WHEEL_RADIUS,
-      this.groundSpeed
+      this.groundSpeed,
     );
 
     // Draw particles
@@ -2504,33 +2766,46 @@ class GameEngine {
     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset camera transform
 
     // AAA: Post-processing effects
-    if (this.state === 'playing') {
+    if (this.state === "playing") {
       // Chromatic aberration on slow-mo
       if (this.timeDilation.isSlowMo()) {
-        this.postProcess.applyChromaticAberration(ctx, gameCanvas, 1 - this.timeDilation.getScale());
+        this.postProcess.applyChromaticAberration(
+          ctx,
+          gameCanvas,
+          1 - this.timeDilation.getScale(),
+        );
       }
 
       // Vignette effect
       const danger = this.physics.getDangerLevel(this.player);
-      this.postProcess.drawVignette(ctx, this.layout.width, this.layout.height, 0.5 + danger * 0.5);
+      this.postProcess.drawVignette(
+        ctx,
+        this.layout.width,
+        this.layout.height,
+        0.5 + danger * 0.5,
+      );
 
       // Bloom on coins and glow
       this.postProcess.applyBloom(ctx, gameCanvas);
     }
 
     // Draw overlays based on state
-    if (this.state === 'start') {
+    if (this.state === "start") {
       this.render.drawStartScreen(this.layout);
-    } else if (this.state === 'gameOver') {
+    } else if (this.state === "gameOver") {
       this.render.drawGameOverScreen(this.layout, this.score);
     }
 
     // AAA: Draw slow-mo indicator
     if (this.timeDilation.isSlowMo()) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-      ctx.font = 'bold 24px -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('SLOW MOTION', this.layout.width / 2, this.layout.safeAreaTop + 80);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+      ctx.font = "bold 24px -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        "SLOW MOTION",
+        this.layout.width / 2,
+        this.layout.safeAreaTop + 80,
+      );
     }
   }
 
@@ -2549,8 +2824,8 @@ class GameEngine {
 // ============================================================================
 
 // Start the game when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => new GameEngine());
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => new GameEngine());
 } else {
   new GameEngine();
 }
