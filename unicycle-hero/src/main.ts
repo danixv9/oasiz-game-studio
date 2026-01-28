@@ -164,6 +164,26 @@ interface TrailPoint {
   alpha: number;
 }
 
+// Clawdbot/Telegram integration types
+interface ClawdbotMessage {
+  type:
+    | "gameStart"
+    | "gameOver"
+    | "scoreUpdate"
+    | "achievement"
+    | "playerAction";
+  payload: Record<string, unknown>;
+  timestamp: number;
+  sessionId: string;
+}
+
+interface ClawdbotConfig {
+  wsUrl: string;
+  reconnectInterval: number;
+  maxReconnectAttempts: number;
+  enableTelegram: boolean;
+}
+
 // ============================================================================
 // SECTION 3: CONFIGURATION (All game constants in one place)
 // ============================================================================
@@ -815,6 +835,294 @@ class LightingSystem {
     ctx.lineTo(obstacleX - shadowStretch * 10, groundY + 10);
     ctx.closePath();
     ctx.fill();
+  }
+}
+
+// ============================================================================
+// SECTION 4H: CLAWDBOT/TELEGRAM INTEGRATION SYSTEM
+// ============================================================================
+
+class ClawdbotSystem {
+  private ws: WebSocket | null = null;
+  private config: ClawdbotConfig;
+  private sessionId: string;
+  private reconnectAttempts = 0;
+  private messageQueue: ClawdbotMessage[] = [];
+  private isConnected = false;
+  private eventListeners: Map<string, ((data: unknown) => void)[]> = new Map();
+
+  constructor(config?: Partial<ClawdbotConfig>) {
+    this.config = {
+      wsUrl: config?.wsUrl || "ws://127.0.0.1:18789",
+      reconnectInterval: config?.reconnectInterval || 3000,
+      maxReconnectAttempts: config?.maxReconnectAttempts || 5,
+      enableTelegram: config?.enableTelegram ?? true,
+    };
+    this.sessionId = this.generateSessionId();
+  }
+
+  private generateSessionId(): string {
+    return `game_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  connect(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) return;
+
+    try {
+      this.ws = new WebSocket(this.config.wsUrl);
+
+      this.ws.onopen = () => {
+        console.log("[Clawdbot] Connected to server");
+        this.isConnected = true;
+        this.reconnectAttempts = 0;
+        this.flushMessageQueue();
+        this.sendHandshake();
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleMessage(data);
+        } catch (e) {
+          console.warn("[Clawdbot] Failed to parse message:", e);
+        }
+      };
+
+      this.ws.onclose = () => {
+        console.log("[Clawdbot] Connection closed");
+        this.isConnected = false;
+        this.attemptReconnect();
+      };
+
+      this.ws.onerror = (error) => {
+        console.warn("[Clawdbot] WebSocket error:", error);
+      };
+    } catch (e) {
+      console.warn("[Clawdbot] Failed to connect:", e);
+      this.attemptReconnect();
+    }
+  }
+
+  private attemptReconnect(): void {
+    if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
+      console.log("[Clawdbot] Max reconnect attempts reached");
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = this.config.reconnectInterval * this.reconnectAttempts;
+    console.log(
+      `[Clawdbot] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`,
+    );
+
+    setTimeout(() => this.connect(), delay);
+  }
+
+  private sendHandshake(): void {
+    this.send({
+      type: "playerAction",
+      payload: {
+        action: "handshake",
+        game: "unicycle-hero",
+        version: "1.0.0",
+        capabilities: ["score", "achievements", "telegram"],
+      },
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+    });
+  }
+
+  private handleMessage(data: Record<string, unknown>): void {
+    const messageType = data.type as string;
+
+    // Handle Telegram-specific messages
+    if (messageType === "telegram" && this.config.enableTelegram) {
+      this.handleTelegramMessage(data.payload as Record<string, unknown>);
+      return;
+    }
+
+    // Handle game commands from server
+    if (messageType === "command") {
+      this.handleCommand(data.payload as Record<string, unknown>);
+      return;
+    }
+
+    // Emit to registered listeners
+    const listeners = this.eventListeners.get(messageType);
+    if (listeners) {
+      listeners.forEach((callback) => callback(data.payload));
+    }
+  }
+
+  private handleTelegramMessage(payload: Record<string, unknown>): void {
+    const action = payload.action as string;
+
+    switch (action) {
+      case "startGame":
+        this.emit("telegramStartGame", payload);
+        break;
+      case "getScore":
+        this.emit("telegramGetScore", payload);
+        break;
+      case "shareScore":
+        this.emit("telegramShareScore", payload);
+        break;
+      case "leaderboard":
+        this.emit("telegramLeaderboard", payload);
+        break;
+      default:
+        console.log("[Clawdbot] Unknown Telegram action:", action);
+    }
+  }
+
+  private handleCommand(payload: Record<string, unknown>): void {
+    const command = payload.command as string;
+
+    switch (command) {
+      case "pause":
+        this.emit("pauseGame", payload);
+        break;
+      case "resume":
+        this.emit("resumeGame", payload);
+        break;
+      case "restart":
+        this.emit("restartGame", payload);
+        break;
+      default:
+        console.log("[Clawdbot] Unknown command:", command);
+    }
+  }
+
+  private flushMessageQueue(): void {
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue.shift();
+      if (message) this.sendImmediate(message);
+    }
+  }
+
+  private sendImmediate(message: ClawdbotMessage): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(message));
+    }
+  }
+
+  send(message: ClawdbotMessage): void {
+    if (this.isConnected) {
+      this.sendImmediate(message);
+    } else {
+      this.messageQueue.push(message);
+    }
+  }
+
+  // Public API for game events
+  sendGameStart(): void {
+    this.send({
+      type: "gameStart",
+      payload: { game: "unicycle-hero" },
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+    });
+  }
+
+  sendGameOver(score: number, distance: number): void {
+    this.send({
+      type: "gameOver",
+      payload: { score, distance, game: "unicycle-hero" },
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+    });
+  }
+
+  sendScoreUpdate(score: number): void {
+    this.send({
+      type: "scoreUpdate",
+      payload: { score },
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+    });
+  }
+
+  sendAchievement(achievement: string, data?: Record<string, unknown>): void {
+    this.send({
+      type: "achievement",
+      payload: { achievement, ...data },
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+    });
+  }
+
+  // Telegram-specific methods
+  sendTelegramScore(chatId: string, score: number): void {
+    this.send({
+      type: "playerAction",
+      payload: {
+        action: "telegramReply",
+        chatId,
+        message: `🎮 Unicycle Hero Score: ${score} points!`,
+      },
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+    });
+  }
+
+  sendTelegramLeaderboard(
+    chatId: string,
+    scores: { name: string; score: number }[],
+  ): void {
+    const leaderboardText = scores
+      .slice(0, 10)
+      .map((s, i) => `${i + 1}. ${s.name}: ${s.score}`)
+      .join("\n");
+
+    this.send({
+      type: "playerAction",
+      payload: {
+        action: "telegramReply",
+        chatId,
+        message: `🏆 Unicycle Hero Leaderboard:\n${leaderboardText}`,
+      },
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+    });
+  }
+
+  // Event system
+  on(event: string, callback: (data: unknown) => void): void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
+    }
+    this.eventListeners.get(event)!.push(callback);
+  }
+
+  off(event: string, callback: (data: unknown) => void): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(callback);
+      if (index > -1) listeners.splice(index, 1);
+    }
+  }
+
+  private emit(event: string, data: unknown): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.forEach((callback) => callback(data));
+    }
+  }
+
+  disconnect(): void {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.isConnected = false;
+  }
+
+  getSessionId(): string {
+    return this.sessionId;
+  }
+
+  isConnectedToServer(): boolean {
+    return this.isConnected;
   }
 }
 
@@ -2316,6 +2624,9 @@ class GameEngine {
   private trail: TrailRenderer;
   private lighting: LightingSystem;
 
+  // Clawdbot/Telegram Integration
+  private clawdbot: ClawdbotSystem;
+
   // Timing
   private lastTime = 0;
   private accumulator = 0;
@@ -2366,12 +2677,51 @@ class GameEngine {
     this.trail = new TrailRenderer();
     this.lighting = new LightingSystem();
 
+    // Clawdbot/Telegram Integration
+    this.clawdbot = new ClawdbotSystem();
+    this.setupClawdbotHandlers();
+    this.clawdbot.connect();
+
     // Setup
     this.setupEventListeners();
     this.resize();
 
     // Start game loop
     requestAnimationFrame((t) => this.gameLoop(t));
+  }
+
+  private setupClawdbotHandlers(): void {
+    // Handle Telegram commands
+    this.clawdbot.on("telegramStartGame", () => {
+      if (this.state !== "playing") {
+        this.start();
+      }
+    });
+
+    this.clawdbot.on("telegramGetScore", (data: unknown) => {
+      const payload = data as { chatId?: string };
+      if (payload.chatId) {
+        this.clawdbot.sendTelegramScore(payload.chatId, this.score);
+      }
+    });
+
+    this.clawdbot.on("pauseGame", () => {
+      if (this.state === "playing") {
+        this.state = "paused";
+      }
+    });
+
+    this.clawdbot.on("resumeGame", () => {
+      if (this.state === "paused") {
+        this.state = "playing";
+        this.lastTime = performance.now();
+      }
+    });
+
+    this.clawdbot.on("restartGame", () => {
+      this.reset();
+      this.start();
+    });
   }
 
   private calculateLayout(): Layout {
@@ -2521,6 +2871,7 @@ class GameEngine {
     this.ui.showHUD();
     this.ui.hideHints();
     this.settings.setButtonVisible(true);
+    this.clawdbot.sendGameStart();
   }
 
   private pause(): void {
@@ -2545,6 +2896,9 @@ class GameEngine {
     if (typeof window.submitScore === "function") {
       window.submitScore(this.score);
     }
+
+    // Notify Clawdbot/Telegram
+    this.clawdbot.sendGameOver(this.score, this.distance);
   }
 
   private reset(): void {
