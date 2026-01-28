@@ -171,14 +171,15 @@ interface ClawdbotMessage {
     | "gameOver"
     | "scoreUpdate"
     | "achievement"
-    | "playerAction";
+    | "playerAction"
+    | "telegram";
   payload: Record<string, unknown>;
   timestamp: number;
   sessionId: string;
 }
 
 interface ClawdbotConfig {
-  wsUrl: string;
+  apiUrl: string;
   reconnectInterval: number;
   maxReconnectAttempts: number;
   enableTelegram: boolean;
@@ -843,17 +844,16 @@ class LightingSystem {
 // ============================================================================
 
 class ClawdbotSystem {
-  private ws: WebSocket | null = null;
   private config: ClawdbotConfig;
   private sessionId: string;
-  private reconnectAttempts = 0;
   private messageQueue: ClawdbotMessage[] = [];
   private isConnected = false;
   private eventListeners: Map<string, ((data: unknown) => void)[]> = new Map();
+  private isSending = false;
 
   constructor(config?: Partial<ClawdbotConfig>) {
     this.config = {
-      wsUrl: config?.wsUrl || "ws://127.0.0.1:18789",
+      apiUrl: config?.apiUrl || "/api/clawdbot", // Vercel API route -> Fly.io
       reconnectInterval: config?.reconnectInterval || 3000,
       maxReconnectAttempts: config?.maxReconnectAttempts || 5,
       enableTelegram: config?.enableTelegram ?? true,
@@ -866,56 +866,11 @@ class ClawdbotSystem {
   }
 
   connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
-
-    try {
-      this.ws = new WebSocket(this.config.wsUrl);
-
-      this.ws.onopen = () => {
-        console.log("[Clawdbot] Connected to server");
-        this.isConnected = true;
-        this.reconnectAttempts = 0;
-        this.flushMessageQueue();
-        this.sendHandshake();
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.handleMessage(data);
-        } catch (e) {
-          console.warn("[Clawdbot] Failed to parse message:", e);
-        }
-      };
-
-      this.ws.onclose = () => {
-        console.log("[Clawdbot] Connection closed");
-        this.isConnected = false;
-        this.attemptReconnect();
-      };
-
-      this.ws.onerror = (error) => {
-        console.warn("[Clawdbot] WebSocket error:", error);
-      };
-    } catch (e) {
-      console.warn("[Clawdbot] Failed to connect:", e);
-      this.attemptReconnect();
-    }
-  }
-
-  private attemptReconnect(): void {
-    if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
-      console.log("[Clawdbot] Max reconnect attempts reached");
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = this.config.reconnectInterval * this.reconnectAttempts;
-    console.log(
-      `[Clawdbot] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`,
-    );
-
-    setTimeout(() => this.connect(), delay);
+    // HTTP API is always available - mark as connected
+    this.isConnected = true;
+    console.log("[Clawdbot] API endpoint ready:", this.config.apiUrl);
+    this.flushMessageQueue();
+    this.sendHandshake();
   }
 
   private sendHandshake(): void {
@@ -932,82 +887,63 @@ class ClawdbotSystem {
     });
   }
 
-  private handleMessage(data: Record<string, unknown>): void {
-    const messageType = data.type as string;
+  private async flushMessageQueue(): Promise<void> {
+    if (this.isSending) return;
+    this.isSending = true;
 
-    // Handle Telegram-specific messages
-    if (messageType === "telegram" && this.config.enableTelegram) {
-      this.handleTelegramMessage(data.payload as Record<string, unknown>);
-      return;
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue.shift();
+      if (message) await this.sendImmediate(message);
     }
 
-    // Handle game commands from server
-    if (messageType === "command") {
-      this.handleCommand(data.payload as Record<string, unknown>);
-      return;
-    }
+    this.isSending = false;
+  }
 
-    // Emit to registered listeners
-    const listeners = this.eventListeners.get(messageType);
-    if (listeners) {
-      listeners.forEach((callback) => callback(data.payload));
+  private async sendImmediate(message: ClawdbotMessage): Promise<void> {
+    try {
+      const response = await fetch(this.config.apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(message),
+      });
+
+      if (!response.ok) {
+        console.warn("[Clawdbot] API error:", response.status);
+        // Re-queue on failure
+        this.messageQueue.push(message);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        if (data.command) {
+          this.handleCommand(data);
+        }
+      }
+    } catch (error) {
+      console.warn("[Clawdbot] Network error:", error);
+      // Re-queue on network failure
+      this.messageQueue.push(message);
     }
   }
 
-  private handleTelegramMessage(payload: Record<string, unknown>): void {
-    const action = payload.action as string;
-
-    switch (action) {
-      case "startGame":
-        this.emit("telegramStartGame", payload);
-        break;
-      case "getScore":
-        this.emit("telegramGetScore", payload);
-        break;
-      case "shareScore":
-        this.emit("telegramShareScore", payload);
-        break;
-      case "leaderboard":
-        this.emit("telegramLeaderboard", payload);
-        break;
-      default:
-        console.log("[Clawdbot] Unknown Telegram action:", action);
-    }
-  }
-
-  private handleCommand(payload: Record<string, unknown>): void {
-    const command = payload.command as string;
+  private handleCommand(data: Record<string, unknown>): void {
+    const command = data.command as string;
 
     switch (command) {
       case "pause":
-        this.emit("pauseGame", payload);
+        this.emit("pauseGame", data);
         break;
       case "resume":
-        this.emit("resumeGame", payload);
+        this.emit("resumeGame", data);
         break;
       case "restart":
-        this.emit("restartGame", payload);
+        this.emit("restartGame", data);
         break;
       default:
         console.log("[Clawdbot] Unknown command:", command);
     }
   }
 
-  private flushMessageQueue(): void {
-    while (this.messageQueue.length > 0) {
-      const message = this.messageQueue.shift();
-      if (message) this.sendImmediate(message);
-    }
-  }
-
-  private sendImmediate(message: ClawdbotMessage): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
-    }
-  }
-
   send(message: ClawdbotMessage): void {
-    if (this.isConnected) {
+    if (this.isConnected && !this.isSending) {
       this.sendImmediate(message);
     } else {
       this.messageQueue.push(message);
@@ -1054,10 +990,11 @@ class ClawdbotSystem {
   // Telegram-specific methods
   sendTelegramScore(chatId: string, score: number): void {
     this.send({
-      type: "playerAction",
+      type: "telegram",
       payload: {
-        action: "telegramReply",
+        action: "sendScore",
         chatId,
+        score,
         message: `🎮 Unicycle Hero Score: ${score} points!`,
       },
       timestamp: Date.now(),
@@ -1075,9 +1012,9 @@ class ClawdbotSystem {
       .join("\n");
 
     this.send({
-      type: "playerAction",
+      type: "telegram",
       payload: {
-        action: "telegramReply",
+        action: "sendLeaderboard",
         chatId,
         message: `🏆 Unicycle Hero Leaderboard:\n${leaderboardText}`,
       },
@@ -1110,10 +1047,6 @@ class ClawdbotSystem {
   }
 
   disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
     this.isConnected = false;
   }
 
