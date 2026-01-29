@@ -315,3 +315,346 @@ describe("Sanitizer - Complete Data Flow", () => {
     expect(gameData.achievements).toEqual(["master", "speedrun"]);
   });
 });
+
+// ============================================================================
+// ADMIN ENDPOINT TESTS
+// ============================================================================
+
+import {
+  redactForClawdbotAdmin,
+  isAdminAuthorized,
+  writeAuditRecord,
+  getAuditRecords,
+  prepareAdminAction,
+  confirmAdminAction,
+  ALLOWED_ADMIN_ACTIONS,
+} from "../api/_lib/clawdbot-admin";
+
+describe("Admin Authorization", () => {
+  it("allows authorized admin botUserIds", () => {
+    // From vi.stubEnv: CLAWDBOT_ADMIN_BOTUSERIDS = "bot_admin-uuid-1,bot_admin-uuid-2"
+    expect(isAdminAuthorized("bot_admin-uuid-1")).toBe(true);
+    expect(isAdminAuthorized("bot_admin-uuid-2")).toBe(true);
+  });
+
+  it("denies unauthorized botUserIds", () => {
+    expect(isAdminAuthorized("bot_regular-user")).toBe(false);
+    expect(isAdminAuthorized("bot_unknown")).toBe(false);
+    expect(isAdminAuthorized("")).toBe(false);
+  });
+});
+
+describe("Admin Redaction", () => {
+  it("redacts sensitive keys in objects", () => {
+    const input = {
+      name: "Test App",
+      token: "secret-token-123",
+      password: "hunter2",
+      apiKey: "sk_live_abc123",
+      email: "admin@example.com",
+      score: 100,
+    };
+
+    const redacted = redactForClawdbotAdmin(input) as Record<string, unknown>;
+
+    // Safe keys preserved
+    expect(redacted.name).toBe("Test App");
+    expect(redacted.score).toBe(100);
+
+    // Sensitive keys redacted
+    expect(redacted.token).toBe("***REDACTED***");
+    expect(redacted.password).toBe("***REDACTED***");
+    expect(redacted.apiKey).toBe("***REDACTED***");
+    expect(redacted.email).toBe("***REDACTED***");
+  });
+
+  it("redacts nested sensitive data", () => {
+    const input = {
+      user: {
+        displayName: "Alice",
+        userId: "internal_123",
+        settings: {
+          theme: "dark",
+          sessionId: "sess_abc",
+        },
+      },
+    };
+
+    const redacted = redactForClawdbotAdmin(input) as Record<string, unknown>;
+    const user = redacted.user as Record<string, unknown>;
+    const settings = user.settings as Record<string, unknown>;
+
+    expect(user.displayName).toBe("Alice");
+    expect(user.userId).toBe("***REDACTED***");
+    expect(settings.theme).toBe("dark");
+    expect(settings.sessionId).toBe("***REDACTED***");
+  });
+
+  it("truncates long strings", () => {
+    const longString = "a".repeat(500);
+    const redacted = redactForClawdbotAdmin(longString) as string;
+
+    expect(redacted.length).toBeLessThan(500);
+    expect(redacted).toContain("[redacted]");
+  });
+
+  it("truncates long arrays", () => {
+    const longArray = Array.from({ length: 50 }, (_, i) => i);
+    const redacted = redactForClawdbotAdmin(longArray) as unknown[];
+
+    expect(redacted.length).toBeLessThanOrEqual(21); // 20 items + truncation message
+  });
+
+  it("handles maximum depth", () => {
+    const deeplyNested = {
+      level1: {
+        level2: {
+          level3: {
+            level4: {
+              level5: {
+                tooDeep: "value",
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const redacted = redactForClawdbotAdmin(deeplyNested) as Record<string, unknown>;
+    // Should not throw and should handle deep nesting
+    expect(redacted).toBeDefined();
+  });
+
+  it("redacts JWT-like tokens in strings", () => {
+    const jwtToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature";
+    const redacted = redactForClawdbotAdmin(jwtToken);
+    expect(redacted).toBe("***REDACTED***");
+  });
+
+  it("redacts Stripe-like keys in strings", () => {
+    const stripeKey = "sk_live_abc123xyz";
+    const redacted = redactForClawdbotAdmin(stripeKey);
+    expect(redacted).toBe("***REDACTED***");
+  });
+});
+
+describe("Admin Audit Logging", () => {
+  it("writes audit records with timestamps", () => {
+    const beforeCount = getAuditRecords().length;
+
+    writeAuditRecord({
+      endpoint: "/test/audit",
+      action: "test_action",
+      botUserId: "bot_test-user",
+      result: "success",
+      redactionApplied: true,
+    });
+
+    const records = getAuditRecords();
+    expect(records.length).toBeGreaterThan(beforeCount);
+
+    const latestRecord = records[0];
+    expect(latestRecord.endpoint).toBe("/test/audit");
+    expect(latestRecord.action).toBe("test_action");
+    expect(latestRecord.botUserId).toBe("bot_test-user");
+    expect(latestRecord.result).toBe("success");
+    expect(latestRecord.timestamp).toBeDefined();
+  });
+
+  it("retrieves audit records with limit", () => {
+    // Add multiple records
+    for (let i = 0; i < 10; i++) {
+      writeAuditRecord({
+        endpoint: `/test/audit/${i}`,
+        botUserId: "bot_test-user",
+        result: "success",
+        redactionApplied: true,
+      });
+    }
+
+    const limited = getAuditRecords(5);
+    expect(limited.length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe("Admin Actions - Two-Man Rule", () => {
+  it("allows only whitelisted actions", () => {
+    expect(ALLOWED_ADMIN_ACTIONS).toContain("clear_cache");
+    expect(ALLOWED_ADMIN_ACTIONS).toContain("reset_rate_limits");
+    expect(ALLOWED_ADMIN_ACTIONS).toContain("refresh_config");
+    expect(ALLOWED_ADMIN_ACTIONS).not.toContain("delete_all_data");
+    expect(ALLOWED_ADMIN_ACTIONS).not.toContain("shutdown");
+  });
+
+  it("rejects non-whitelisted actions in prepare step", () => {
+    const result = prepareAdminAction("delete_all_data", "bot_admin-uuid-1");
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain("not allowed");
+    }
+  });
+
+  it("successfully prepares allowed actions", () => {
+    const result = prepareAdminAction("clear_cache", "bot_admin-uuid-1");
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.nonce).toBeDefined();
+      expect(result.nonce.length).toBe(32);
+      expect(result.expiresAt).toBeGreaterThan(Date.now());
+    }
+  });
+
+  it("confirms action with valid nonce", () => {
+    // Step 1: Prepare
+    const prepareResult = prepareAdminAction("reset_rate_limits", "bot_admin-uuid-1");
+    expect(prepareResult.success).toBe(true);
+    if (!prepareResult.success) return;
+
+    // Step 2: Confirm
+    const confirmResult = confirmAdminAction(
+      prepareResult.nonce,
+      "reset_rate_limits",
+      "bot_admin-uuid-1"
+    );
+    expect(confirmResult.success).toBe(true);
+    if (confirmResult.success) {
+      expect(confirmResult.result).toContain("successfully");
+    }
+  });
+
+  it("rejects confirm with invalid nonce", () => {
+    const result = confirmAdminAction(
+      "invalid-nonce-12345678901234567890",
+      "clear_cache",
+      "bot_admin-uuid-1"
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain("Invalid");
+    }
+  });
+
+  it("rejects confirm with mismatched action", () => {
+    // Prepare for clear_cache
+    const prepareResult = prepareAdminAction("clear_cache", "bot_admin-uuid-1");
+    expect(prepareResult.success).toBe(true);
+    if (!prepareResult.success) return;
+
+    // Try to confirm with different action
+    const confirmResult = confirmAdminAction(
+      prepareResult.nonce,
+      "reset_rate_limits", // Different action!
+      "bot_admin-uuid-1"
+    );
+    expect(confirmResult.success).toBe(false);
+    if (!confirmResult.success) {
+      expect(confirmResult.error).toContain("mismatch");
+    }
+  });
+
+  it("rejects confirm with mismatched botUserId", () => {
+    // Prepare with one botUserId
+    const prepareResult = prepareAdminAction("refresh_config", "bot_admin-uuid-1");
+    expect(prepareResult.success).toBe(true);
+    if (!prepareResult.success) return;
+
+    // Try to confirm with different botUserId
+    const confirmResult = confirmAdminAction(
+      prepareResult.nonce,
+      "refresh_config",
+      "bot_admin-uuid-2" // Different user!
+    );
+    expect(confirmResult.success).toBe(false);
+    if (!confirmResult.success) {
+      expect(confirmResult.error).toContain("mismatch");
+    }
+  });
+
+  it("prevents nonce reuse", () => {
+    // Prepare
+    const prepareResult = prepareAdminAction("clear_cache", "bot_admin-uuid-1");
+    expect(prepareResult.success).toBe(true);
+    if (!prepareResult.success) return;
+
+    // First confirm succeeds
+    const firstConfirm = confirmAdminAction(
+      prepareResult.nonce,
+      "clear_cache",
+      "bot_admin-uuid-1"
+    );
+    expect(firstConfirm.success).toBe(true);
+
+    // Second confirm with same nonce fails
+    const secondConfirm = confirmAdminAction(
+      prepareResult.nonce,
+      "clear_cache",
+      "bot_admin-uuid-1"
+    );
+    expect(secondConfirm.success).toBe(false);
+    if (!secondConfirm.success) {
+      expect(secondConfirm.error).toMatch(/Invalid|used/i);
+    }
+  });
+});
+
+describe("Admin Response Redaction - No Forbidden Keys", () => {
+  it("responses contain no token keys", () => {
+    const response = redactForClawdbotAdmin({
+      status: "ok",
+      integrationToken: "secret",
+      token: "also-secret",
+      authToken: "more-secret",
+    }) as Record<string, unknown>;
+
+    expect(response.status).toBe("ok");
+    expect(response.integrationToken).toBe("***REDACTED***");
+    expect(response.token).toBe("***REDACTED***");
+    expect(response.authToken).toBe("***REDACTED***");
+  });
+
+  it("responses contain no secret keys", () => {
+    const response = redactForClawdbotAdmin({
+      data: "public",
+      clientSecret: "abc",
+      apiSecret: "def",
+      secretKey: "ghi",
+    }) as Record<string, unknown>;
+
+    expect(response.data).toBe("public");
+    expect(response.clientSecret).toBe("***REDACTED***");
+    expect(response.apiSecret).toBe("***REDACTED***");
+    expect(response.secretKey).toBe("***REDACTED***");
+  });
+
+  it("responses contain no PII", () => {
+    const response = redactForClawdbotAdmin({
+      gameName: "Unicycle Hero",
+      playerEmail: "player@game.com",
+      phone: "555-1234",
+      address: "123 Main St",
+    }) as Record<string, unknown>;
+
+    expect(response.gameName).toBe("Unicycle Hero");
+    expect(response.playerEmail).toBe("***REDACTED***");
+    expect(response.phone).toBe("***REDACTED***");
+    expect(response.address).toBe("***REDACTED***");
+  });
+
+  it("responses contain no internal user IDs", () => {
+    const response = redactForClawdbotAdmin({
+      botUserId: "bot_123", // Allowed - this is the opaque ID
+      userId: "internal_456",
+      adminUserId: "admin_789",
+      actorId: "actor_012",
+      internalId: "internal_345",
+    }) as Record<string, unknown>;
+
+    // botUserId is allowed (it's the opaque identifier)
+    expect(response.botUserId).toBe("bot_123");
+    // Internal IDs are redacted
+    expect(response.userId).toBe("***REDACTED***");
+    expect(response.adminUserId).toBe("***REDACTED***");
+    expect(response.actorId).toBe("***REDACTED***");
+    expect(response.internalId).toBe("***REDACTED***");
+  });
+});
