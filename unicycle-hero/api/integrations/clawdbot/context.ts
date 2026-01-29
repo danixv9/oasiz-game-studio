@@ -4,10 +4,10 @@
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { validateClawdbotToken } from "../../../lib/clawdbot-auth";
-import { checkRateLimit, getRateLimitHeaders } from "../../../lib/clawdbot-rate-limit";
-import { getBotUserMapping, getGameDataByBotUser } from "../../../lib/clawdbot-storage";
-import { sanitize, createSanitizedSummary } from "../../../lib/clawdbot-sanitizer";
+import { validateClawdbotToken } from "../../_lib/clawdbot-auth";
+import { checkRateLimit, getRateLimitHeaders } from "../../_lib/clawdbot-rate-limit";
+import { getBotUserMapping, getGameDataByBotUser } from "../../_lib/clawdbot-storage";
+import { sanitize, createSanitizedSummary } from "../../_lib/clawdbot-sanitizer";
 
 interface ContextRequest {
   botUserId: string;

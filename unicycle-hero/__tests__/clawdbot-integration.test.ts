@@ -12,9 +12,9 @@ vi.stubEnv("CLAWDBOT_ENABLED", "true");
 vi.stubEnv("CLAWDBOT_ADMIN_BOTUSERIDS", "bot_admin-uuid-1,bot_admin-uuid-2");
 
 // Import modules after env setup
-import { validateClawdbotToken, isClawdbotEnabled, getAgentId } from "../lib/clawdbot-auth";
-import { sanitize, isForbiddenKey, assertNoForbiddenKeys } from "../lib/clawdbot-sanitizer";
-import { checkRateLimit } from "../lib/clawdbot-rate-limit";
+import { validateClawdbotToken, isClawdbotEnabled, getAgentId } from "../api/_lib/clawdbot-auth";
+import { sanitize, isForbiddenKey, assertNoForbiddenKeys } from "../api/_lib/clawdbot-sanitizer";
+import { checkRateLimit } from "../api/_lib/clawdbot-rate-limit";
 import {
   createLinkCode,
   redeemLinkCode,
@@ -22,7 +22,7 @@ import {
   storeGameData,
   getGameDataByBotUser,
   isAdminBotUser,
-} from "../lib/clawdbot-storage";
+} from "../api/_lib/clawdbot-storage";
 import type { VercelRequest } from "@vercel/node";
 
 // Mock request factory

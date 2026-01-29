@@ -4,9 +4,9 @@
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { validateClawdbotToken } from "../../../../lib/clawdbot-auth";
-import { checkRateLimit, getRateLimitHeaders } from "../../../../lib/clawdbot-rate-limit";
-import { redeemLinkCode } from "../../../../lib/clawdbot-storage";
+import { validateClawdbotToken } from "../../../_lib/clawdbot-auth";
+import { checkRateLimit, getRateLimitHeaders } from "../../../_lib/clawdbot-rate-limit";
+import { redeemLinkCode } from "../../../_lib/clawdbot-storage";
 
 interface LinkConfirmRequest {
   linkCode: string;

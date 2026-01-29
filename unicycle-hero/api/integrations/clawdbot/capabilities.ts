@@ -4,9 +4,9 @@
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { validateClawdbotToken } from "../../../lib/clawdbot-auth";
-import { checkRateLimit, getRateLimitHeaders } from "../../../lib/clawdbot-rate-limit";
-import { isAdminBotUser } from "../../../lib/clawdbot-storage";
+import { validateClawdbotToken } from "../../_lib/clawdbot-auth";
+import { checkRateLimit, getRateLimitHeaders } from "../../_lib/clawdbot-rate-limit";
+import { isAdminBotUser } from "../../_lib/clawdbot-storage";
 
 interface CapabilitiesRequest {
   botUserId: string;

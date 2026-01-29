@@ -4,8 +4,8 @@
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { validateClawdbotToken, isClawdbotEnabled, getAgentId } from "../../../lib/clawdbot-auth";
-import { checkRateLimit, getRateLimitHeaders } from "../../../lib/clawdbot-rate-limit";
+import { validateClawdbotToken, isClawdbotEnabled, getAgentId } from "../../_lib/clawdbot-auth";
+import { checkRateLimit, getRateLimitHeaders } from "../../_lib/clawdbot-rate-limit";
 
 // App version (could be injected at build time)
 const APP_VERSION = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || "1.0.0";
