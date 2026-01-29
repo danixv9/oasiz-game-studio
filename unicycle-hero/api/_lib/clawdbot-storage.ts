@@ -4,7 +4,14 @@
  * NOTE: In production, use a persistent database (Redis, PostgreSQL, etc.)
  */
 
-import { randomUUID } from "crypto";
+// Simple UUID generator (works in all environments)
+function generateUUID(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 // Link code TTL: 10 minutes
 const LINK_CODE_TTL_MS = 10 * 60 * 1000;
@@ -99,7 +106,7 @@ export function redeemLinkCode(
   linkCode.used = true;
 
   // Create bot user mapping
-  const botUserId = `bot_${randomUUID()}`;
+  const botUserId = `bot_${generateUUID()}`;
   const now = Date.now();
 
   const mapping: BotUserMapping = {
