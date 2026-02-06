@@ -171,7 +171,10 @@ class ShockwaveSystem {
       const w = this.waves[i];
       w.life -= dt * 1.8;
       w.radius = (1 - w.life) * w.maxRadius;
-      if (w.life <= 0) this.waves.splice(i, 1);
+      if (w.life <= 0) {
+        this.waves[i] = this.waves[this.waves.length - 1];
+        this.waves.pop();
+      }
     }
   }
 
@@ -283,7 +286,11 @@ class ParticleSystem {
                     p.type === "star" ? 0.02 :
                     p.type === "confetti" ? 0.016 : 0.022;
       p.life -= decay * dt * 60;
-      if (p.life <= 0) this.particles.splice(i, 1);
+      if (p.life <= 0) {
+        // Swap-and-pop for O(1) removal instead of splice O(n)
+        this.particles[i] = this.particles[this.particles.length - 1];
+        this.particles.pop();
+      }
     }
   }
 
@@ -358,7 +365,10 @@ class FloatingTextSystem {
       const t = this.texts[i];
       t.y -= 40 * dt;
       t.life -= 0.015 * dt * 60;
-      if (t.life <= 0) this.texts.splice(i, 1);
+      if (t.life <= 0) {
+        this.texts[i] = this.texts[this.texts.length - 1];
+        this.texts.pop();
+      }
     }
   }
 
@@ -420,7 +430,10 @@ class AnimationSystem {
     for (let i = this.animations.length - 1; i >= 0; i--) {
       const a = this.animations[i];
       a.progress += dt / a.duration;
-      if (a.progress >= 1) this.animations.splice(i, 1);
+      if (a.progress >= 1) {
+        this.animations[i] = this.animations[this.animations.length - 1];
+        this.animations.pop();
+      }
     }
   }
 
@@ -725,6 +738,29 @@ class AudioManager {
     o.start(now); o.stop(now + 0.18);
   }
 
+  playLevelUpSound(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const now = this.ctx.currentTime;
+    // Rising power chord
+    const chords = [
+      [261.63, 329.63, 392.0],  // C major
+      [329.63, 415.30, 523.25], // E major
+      [392.0, 493.88, 587.33],  // G-B-D
+      [523.25, 659.25, 783.99], // C5 major
+    ];
+    chords.forEach((chord, ci) => {
+      chord.forEach(freq => {
+        const o = this.createOsc(freq, "triangle");
+        const g = this.createGainNode(0.1);
+        o.connect(g); g.connect(this.sfxGain!);
+        const t = now + ci * 0.12;
+        g.gain.setValueAtTime(0.1, t);
+        g.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
+        o.start(t); o.stop(t + 0.3);
+      });
+    });
+  }
+
   playRapidFireSound(): void {
     if (!this.ctx || !this.sfxGain) return;
     const now = this.ctx.currentTime;
@@ -767,12 +803,17 @@ class BlockBlastGame {
   private cachedBgDifficulty = -1;
   private cachedBgWidth = 0;
   private cachedBgHeight = 0;
+  private smoothDifficulty = 0;
+  private cachedVignette: CanvasGradient | null = null;
+  private cachedVigW = 0;
+  private cachedVigH = 0;
 
   // Drag
   draggedPiece: BlockPiece | null = null;
   draggedPieceIndex = -1;
   dragOffset = { x: 0, y: 0 };
   dragPos = { x: 0, y: 0 };
+  dragTrail: { x: number; y: number }[] = [];
   ghostPos: { gridX: number; gridY: number } | null = null;
   isValidPlacement = false;
   private completionRows: number[] = [];
@@ -786,6 +827,8 @@ class BlockBlastGame {
   reducedMotion: boolean;
   comboHideTimeout = 0;
   displayScore = 0;
+  lastPointerTime = 0;
+  newHighScoreShown = false;
 
   // Row/col fill counts (for almost-full indicators)
   rowFill: number[] = new Array(CONFIG.GRID_SIZE).fill(0);
@@ -923,6 +966,7 @@ class BlockBlastGame {
     this.state.started = true;
     this.state.highScore = this.loadHighScore();
     this.displayScore = 0;
+    this.newHighScoreShown = false;
     this.updateScoreDisplay();
 
     // Clean up previous game effects
@@ -970,10 +1014,11 @@ class BlockBlastGame {
     while (this.state.blockQueue.length < CONFIG.BLOCK_QUEUE_SIZE) {
       const shape = weightedRandom(adjustedShapes);
       const ci = Math.floor(Math.random() * CONFIG.BLOCK_COLORS.length);
+      const staggerDelay = this.state.blockQueue.length * 0.15; // stagger 150ms each
       this.state.blockQueue.push({
         cells: shape.cells.map(c => [...c] as [number, number]),
         colorIndex: ci, x: 0, y: 0, scale: 0, targetScale: 1,
-        entryProgress: 0,
+        entryProgress: -staggerDelay, // negative = delayed start
       });
     }
     this.positionQueuePieces();
@@ -1026,6 +1071,10 @@ class BlockBlastGame {
 
   onPointerDown(x: number, y: number): void {
     if (!this.state.started || this.state.gameOver) return;
+    // Debounce rapid taps (50ms cooldown)
+    const now = performance.now();
+    if (now - this.lastPointerTime < 50) return;
+    this.lastPointerTime = now;
     for (let i = 0; i < this.state.blockQueue.length; i++) {
       const p = this.state.blockQueue[i];
       const b = this.getPieceBounds(p);
@@ -1050,6 +1099,8 @@ class BlockBlastGame {
   onPointerMove(x: number, y: number): void {
     if (!this.draggedPiece) return;
     this.dragPos = { x, y };
+    this.dragTrail.push({ x, y });
+    if (this.dragTrail.length > 8) this.dragTrail.shift();
     const color = CONFIG.BLOCK_COLORS[this.draggedPiece.colorIndex];
     this.particles.emitTrail(x, y, color.glow);
     const offset = this.isMobile ? 120 : 30;
@@ -1096,6 +1147,12 @@ class BlockBlastGame {
 
       const cleared = this.checkAndClearLines();
 
+      // Combo leeway visual: pulse the combo display when leeway is 1 (about to lose)
+      if (cleared === 0 && this.state.combo > 0 && this.state.comboLeeway === 1) {
+        const el = document.getElementById("comboDisplay");
+        if (el) el.style.opacity = "0.5";
+      }
+
       if (cleared > 0) {
         this.state.combo++;
         this.state.comboLeeway = 2;
@@ -1132,9 +1189,10 @@ class BlockBlastGame {
           this.floatingText.add(cx, cy - 60, "LEVEL UP!", "#00eeff", 34);
           this.floatingText.add(cx, cy - 25, "Level " + (this.state.difficulty + 1), "#88ddff", 22);
           this.particles.emit(cx, cy, "#00eeff", 20, "star");
+          this.particles.emit(cx, cy, "#ffffff", 10, "confetti");
           this.shockwaves.emit(cx, cy, this.cellSize * CONFIG.GRID_SIZE * 0.8, "#00eeff", 3);
           this.flash.trigger("#00eeff", 0.12);
-          this.audio.playMilestoneSound();
+          this.audio.playLevelUpSound();
           triggerHaptic("success");
         }
 
@@ -1191,6 +1249,18 @@ class BlockBlastGame {
           triggerHaptic("success");
         }
 
+        // New high score detection (mid-game)
+        if (!this.newHighScoreShown && this.state.highScore > 0 && this.state.score > this.state.highScore) {
+          this.newHighScoreShown = true;
+          this.floatingText.add(cx, cy - 100, "NEW BEST!", "#ffd700", 36);
+          this.particles.emit(cx, cy, "#ffd700", 25, "confetti");
+          this.particles.emit(cx, cy, "#ffffff", 10, "star");
+          this.shockwaves.emit(cx, cy, this.cellSize * CONFIG.GRID_SIZE, "#ffd700", 4);
+          this.flash.trigger("#ffd700", 0.15);
+          this.audio.playPerfectClearSound();
+          triggerHaptic("success");
+        }
+
         // Milestone check
         if (this.state.score >= this.state.nextMilestone) {
           this.state.nextMilestone += CONFIG.MILESTONE_INTERVAL;
@@ -1236,6 +1306,7 @@ class BlockBlastGame {
     this.completionRows = [];
     this.completionCols = [];
     this.lastGhostKey = "";
+    this.dragTrail = [];
   }
 
   canPlacePiece(piece: BlockPiece, gx: number, gy: number): boolean {
@@ -1255,8 +1326,13 @@ class BlockBlastGame {
       this.animations.addPlaceAnimation(x, y);
       const px = this.gridOffsetX + (x + 0.5) * this.cellSize;
       const py = this.gridOffsetY + (y + 0.5) * this.cellSize;
-      this.particles.emit(px, py, color.glow, 6, "spark");
+      this.particles.emit(px, py, color.glow, 4, "spark");
+      this.particles.emit(px, py, color.main, 2, "ember");
     }
+    // Small shockwave at piece center
+    const pcx = this.gridOffsetX + (gx + 0.5) * this.cellSize;
+    const pcy = this.gridOffsetY + (gy + 0.5) * this.cellSize;
+    this.shockwaves.emit(pcx, pcy, this.cellSize * 2, color.glow, 1.5);
     this.state.score += piece.cells.length;
   }
 
@@ -1431,14 +1507,19 @@ class BlockBlastGame {
     // Trigger bump animation
     el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
     document.getElementById("highScore")!.textContent = this.state.highScore.toString();
-    // Update multiplier indicator
+    const lvlEl = document.getElementById("levelIndicator");
+    if (lvlEl) lvlEl.textContent = "Lv." + (this.state.difficulty + 1);
+    // Update multiplier indicator + score glow
     const multEl = document.getElementById("multiplier");
+    const scoreContainer = document.querySelector(".score-container") as HTMLElement;
     if (multEl) {
       if (this.state.streakMultiplier > 1.1) {
         multEl.textContent = "x" + this.state.streakMultiplier.toFixed(1);
         multEl.style.display = "block";
+        if (scoreContainer) scoreContainer.classList.add("multiplier-active");
       } else {
         multEl.style.display = "none";
+        if (scoreContainer) scoreContainer.classList.remove("multiplier-active");
       }
     }
   }
@@ -1470,6 +1551,9 @@ class BlockBlastGame {
       p.scale = lerp(p.scale, p.targetScale, 0.2);
     }
 
+    // Smooth difficulty transition
+    this.smoothDifficulty = lerp(this.smoothDifficulty, this.state.difficulty, dt * 2);
+
     // Smooth score counting
     if (this.displayScore !== this.state.score) {
       const diff = this.state.score - this.displayScore;
@@ -1489,36 +1573,45 @@ class BlockBlastGame {
     const w = window.innerWidth, h = window.innerHeight;
     ctx.clearRect(0, 0, w, h);
 
-    // Dynamic background that shifts with difficulty (cached)
-    const d = this.state.difficulty;
-    if (!this.cachedBgGradient || this.cachedBgDifficulty !== d || this.cachedBgWidth !== w || this.cachedBgHeight !== h) {
+    // Dynamic background with smooth difficulty transition
+    const sd = this.smoothDifficulty;
+    const sdRounded = Math.round(sd * 100); // cache key with precision
+    if (!this.cachedBgGradient || this.cachedBgDifficulty !== sdRounded || this.cachedBgWidth !== w || this.cachedBgHeight !== h) {
       const bgColors = [
-        ["#0c0c20", "#111133", "#0d0d28", "#080818"],
-        ["#0c0c22", "#131340", "#0d0d30", "#08081c"],
-        ["#10081c", "#1a1050", "#120d35", "#0a0620"],
-        ["#140818", "#201048", "#18082e", "#0c041a"],
-        ["#180810", "#280830", "#1e0620", "#100412"],
-        ["#1a0808", "#2a1010", "#1c0808", "#0e0404"],
-        ["#1e0505", "#301008", "#200605", "#120303"],
+        [12,12,32, 17,17,51, 13,13,40, 8,8,24],
+        [12,12,34, 19,19,64, 13,13,48, 8,8,28],
+        [16,8,28, 26,16,80, 18,13,53, 10,6,32],
+        [20,8,24, 32,16,72, 24,8,46, 12,4,26],
+        [24,8,16, 40,8,48, 30,6,32, 16,4,18],
+        [26,8,8, 42,16,16, 28,8,8, 14,4,4],
+        [30,5,5, 48,16,8, 32,6,5, 18,3,3],
       ];
-      const cols = bgColors[Math.min(d, bgColors.length - 1)];
+      const lo = Math.floor(clamp(sd, 0, bgColors.length - 1));
+      const hi = Math.min(lo + 1, bgColors.length - 1);
+      const t = sd - lo;
+      const mix = (a: number[], b: number[], i: number) => Math.round(a[i] + (b[i] - a[i]) * t);
+      const c = (i: number) => `rgb(${mix(bgColors[lo], bgColors[hi], i*3)},${mix(bgColors[lo], bgColors[hi], i*3+1)},${mix(bgColors[lo], bgColors[hi], i*3+2)})`;
       this.cachedBgGradient = ctx.createLinearGradient(0, 0, w * 0.3, h);
-      this.cachedBgGradient.addColorStop(0, cols[0]);
-      this.cachedBgGradient.addColorStop(0.4, cols[1]);
-      this.cachedBgGradient.addColorStop(0.7, cols[2]);
-      this.cachedBgGradient.addColorStop(1, cols[3]);
-      this.cachedBgDifficulty = d;
+      this.cachedBgGradient.addColorStop(0, c(0));
+      this.cachedBgGradient.addColorStop(0.4, c(1));
+      this.cachedBgGradient.addColorStop(0.7, c(2));
+      this.cachedBgGradient.addColorStop(1, c(3));
+      this.cachedBgDifficulty = sdRounded;
       this.cachedBgWidth = w;
       this.cachedBgHeight = h;
     }
     ctx.fillStyle = this.cachedBgGradient;
     ctx.fillRect(0, 0, w, h);
 
-    // Subtle radial vignette
-    const vig = ctx.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.9);
-    vig.addColorStop(0, "transparent");
-    vig.addColorStop(1, "rgba(0,0,0,0.35)");
-    ctx.fillStyle = vig;
+    // Subtle radial vignette (cached)
+    if (!this.cachedVignette || this.cachedVigW !== w || this.cachedVigH !== h) {
+      this.cachedVignette = ctx.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.9);
+      this.cachedVignette.addColorStop(0, "transparent");
+      this.cachedVignette.addColorStop(1, "rgba(0,0,0,0.35)");
+      this.cachedVigW = w;
+      this.cachedVigH = h;
+    }
+    ctx.fillStyle = this.cachedVignette;
     ctx.fillRect(0, 0, w, h);
 
     // Ambient starfield (behind everything)
@@ -1772,10 +1865,11 @@ class BlockBlastGame {
       const ph = (b.maxY - b.minY + 1) * this.queueCellSize;
       const pcx = piece.x + pw / 2, pcy = piece.y + ph / 2;
       // Entry animation (slide up from below + elastic) + idle bob
-      const entryT = piece.entryProgress < 1 ? easeOutBack(piece.entryProgress) : 1;
+      const ep = Math.max(0, piece.entryProgress);
+      const entryT = ep < 1 ? easeOutBack(ep) : 1;
       const entryOffset = (1 - entryT) * 40;
       const entryAlpha = entryT;
-      const bob = piece.entryProgress >= 1 ? Math.sin(this.gameTime * 1.8 + i * 1.2) * 3 : 0;
+      const bob = ep >= 1 ? Math.sin(this.gameTime * 1.8 + i * 1.2) * 3 : 0;
 
       ctx.save();
       ctx.globalAlpha *= entryAlpha;
@@ -1799,6 +1893,20 @@ class BlockBlastGame {
     const b = this.getPieceBounds(this.draggedPiece);
     const offset = this.isMobile ? 120 : 30;
     const pcx = (b.maxX + b.minX) / 2, pcy = (b.maxY + b.minY) / 2;
+
+    // Motion trail
+    if (this.dragTrail.length > 1) {
+      ctx.save();
+      for (let i = 0; i < this.dragTrail.length - 1; i++) {
+        const t = i / this.dragTrail.length;
+        ctx.globalAlpha = t * 0.15;
+        ctx.fillStyle = color.glow;
+        ctx.beginPath();
+        ctx.arc(this.dragTrail[i].x, this.dragTrail[i].y - offset, 4 + t * 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
 
     // Glow circle under dragged piece
     ctx.save();

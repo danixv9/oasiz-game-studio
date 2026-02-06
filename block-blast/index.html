@@ -65,6 +65,7 @@
             border-radius: 20px;
             padding: 18px 32px;
             backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 2px solid rgba(255,255,255,0.15);
             box-shadow: 
                 0 8px 32px rgba(0,0,0,0.4),
@@ -72,6 +73,20 @@
                 0 0 20px rgba(102, 126, 234, 0.2);
             position: relative;
             overflow: hidden;
+        }
+
+        .score-container.multiplier-active {
+            border-color: rgba(255,68,255,0.4);
+            box-shadow:
+                0 8px 32px rgba(0,0,0,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.1),
+                0 0 25px rgba(255,68,255,0.3);
+            animation: scoreMultGlow 1s ease-in-out infinite;
+        }
+
+        @keyframes scoreMultGlow {
+            0%, 100% { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(255,68,255,0.2); }
+            50% { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 35px rgba(255,68,255,0.45); }
         }
 
         .score-container::before {
@@ -103,7 +118,7 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5)) drop-shadow(0 0 10px rgba(100,150,255,0.2));
             line-height: 1;
             transition: transform 0.15s ease;
         }
@@ -113,8 +128,10 @@
         }
 
         @keyframes scoreBump {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+            0% { transform: scale(1); }
+            30% { transform: scale(1.15); }
+            60% { transform: scale(0.95); }
+            100% { transform: scale(1); }
         }
 
         .multiplier-badge {
@@ -129,6 +146,16 @@
             border-radius: 12px;
             border: 1px solid rgba(255,68,255,0.4);
             animation: multPulse 0.8s ease-in-out infinite;
+        }
+
+        .level-indicator {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: rgba(160,200,255,0.7);
+            text-align: center;
+            margin-top: 2px;
+            letter-spacing: 1px;
         }
 
         @keyframes multPulse {
@@ -202,6 +229,8 @@
             background: linear-gradient(145deg, rgba(255,215,0,0.25) 0%, rgba(255,140,0,0.15) 100%);
             border-radius: 20px;
             padding: 18px 32px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 2px solid rgba(255,215,0,0.4);
             box-shadow: 
                 0 8px 32px rgba(0,0,0,0.4),
@@ -256,6 +285,8 @@
             justify-content: center;
             align-items: center;
             background: radial-gradient(ellipse at center, rgba(22, 33, 62, 0.95) 0%, rgba(15, 15, 35, 0.98) 100%);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             z-index: 10;
             transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -269,12 +300,12 @@
         #startScreen {
             background: radial-gradient(ellipse at 30% 30%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
                         radial-gradient(ellipse at 70% 70%, rgba(118, 75, 162, 0.12) 0%, transparent 50%),
-                        radial-gradient(ellipse at center, rgba(22, 33, 62, 0.97) 0%, rgba(15, 15, 35, 0.99) 100%);
+                        radial-gradient(ellipse at center, rgba(22, 33, 62, 0.88) 0%, rgba(15, 15, 35, 0.92) 100%);
         }
 
         #gameOverScreen {
             background: radial-gradient(ellipse at 50% 40%, rgba(255, 100, 50, 0.08) 0%, transparent 50%),
-                        radial-gradient(ellipse at center, rgba(22, 33, 62, 0.96) 0%, rgba(15, 15, 35, 0.98) 100%);
+                        radial-gradient(ellipse at center, rgba(22, 33, 62, 0.90) 0%, rgba(15, 15, 35, 0.94) 100%);
         }
 
         .content {
@@ -378,6 +409,9 @@
 
         #startButton {
             animation: btnGlow 2s ease-in-out infinite;
+            font-size: 1.5rem;
+            letter-spacing: 3px;
+            text-shadow: 0 0 12px rgba(255,255,255,0.3);
         }
 
         @keyframes btnGlow {
@@ -511,6 +545,11 @@
         .btn-icon {
             margin-right: 8px;
             vertical-align: middle;
+            transition: transform 0.3s ease;
+        }
+
+        .btn:hover .btn-icon {
+            transform: rotate(-180deg);
         }
 
         .crown-icon {
@@ -623,6 +662,13 @@
         .stat-item:nth-child(1) { animation-delay: 0.1s; }
         .stat-item:nth-child(2) { animation-delay: 0.2s; }
         .stat-item:nth-child(3) { animation-delay: 0.3s; }
+
+        .stat-item:hover {
+            border-color: rgba(255,255,255,0.2);
+            background: linear-gradient(145deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 100%);
+            transform: translateY(-2px);
+            transition: all 0.2s ease;
+        }
 
         .stat-item.small {
             padding: 12px 20px;
@@ -751,6 +797,7 @@
                 <div class="score-label">Score</div>
                 <div class="score-value" id="score">0</div>
                 <div class="multiplier-badge" id="multiplier" style="display:none;">x1.0</div>
+                <div class="level-indicator" id="levelIndicator">Lv.1</div>
             </div>
         </div>
         <div class="hud-section" style="align-items: flex-end;">
