@@ -134,7 +134,7 @@ class AmbientSystem {
     this.time += dt;
     for (const d of this.dots) {
       d.y -= d.speed * dt * 20;
-      if (d.y < -5) { d.y = h + 5; d.x = Math.random() * 2000; }
+      if (d.y < -5) { d.y = h + 5; d.x = Math.random() * window.innerWidth; }
     }
   }
 
@@ -217,7 +217,7 @@ class ScreenFlash {
 interface Particle {
   x: number; y: number; vx: number; vy: number;
   life: number; maxLife: number; size: number;
-  color: string; type: "spark" | "trail" | "burst" | "clear" | "star" | "ember";
+  color: string; type: "spark" | "trail" | "burst" | "clear" | "star" | "ember" | "confetti";
   rotation: number; rotationSpeed: number;
 }
 
@@ -236,16 +236,18 @@ class ParticleSystem {
                     type === "clear" ? 2.5 + Math.random() * 5 :
                     type === "star" ? 1 + Math.random() * 2 :
                     type === "ember" ? 0.5 + Math.random() * 1.5 :
+                    type === "confetti" ? 3 + Math.random() * 6 :
                     1.5 + Math.random() * 3.5;
       this.particles.push({
         x, y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - (type === "burst" ? 4 : 0),
+        vy: Math.sin(angle) * speed - (type === "burst" ? 4 : type === "confetti" ? 5 : 0),
         life: 1, maxLife: 1,
         size: type === "burst" ? 5 + Math.random() * 10 :
               type === "clear" ? 4 + Math.random() * 7 :
               type === "star" ? 3 + Math.random() * 5 :
               type === "ember" ? 2 + Math.random() * 3 :
+              type === "confetti" ? 4 + Math.random() * 6 :
               2 + Math.random() * 4,
         color, type,
         rotation: Math.random() * Math.PI * 2,
@@ -273,12 +275,13 @@ class ParticleSystem {
       const p = this.particles[i];
       p.x += p.vx * dt * 60;
       p.y += p.vy * dt * 60;
-      p.vy += (p.type === "ember" ? 0.05 : 0.15) * dt * 60;
+      p.vy += (p.type === "ember" ? 0.05 : p.type === "confetti" ? 0.08 : 0.15) * dt * 60;
       p.rotation += p.rotationSpeed * dt * 60;
       const decay = p.type === "trail" ? 0.04 :
                     p.type === "clear" ? 0.025 :
                     p.type === "ember" ? 0.015 :
-                    p.type === "star" ? 0.02 : 0.022;
+                    p.type === "star" ? 0.02 :
+                    p.type === "confetti" ? 0.016 : 0.022;
       p.life -= decay * dt * 60;
       if (p.life <= 0) this.particles.splice(i, 1);
     }
@@ -309,6 +312,13 @@ class ParticleSystem {
         const s = p.size * p.life;
         ctx.fillStyle = p.color;
         ctx.fillRect(-s / 2, -s / 2, s, s);
+      } else if (p.type === "confetti") {
+        // Fluttering confetti rectangle
+        const s = p.size * p.life;
+        ctx.fillStyle = p.color;
+        const flutter = Math.sin(p.rotation * 3) * 0.5;
+        ctx.scale(1, 0.3 + 0.7 * Math.abs(Math.sin(p.rotation * 2)));
+        ctx.fillRect(-s / 2, -s / 4, s, s / 2);
       } else if (p.type === "ember") {
         // Glowing ember
         const s = p.size * p.life;
@@ -391,7 +401,8 @@ class AnimationSystem {
     this.animations.push({ type: "clear", x, y, progress: -delay, duration: 0.4 });
   }
 
-  triggerScreenShake(intensity: number) {
+  triggerScreenShake(reduced: boolean, intensity: number) {
+    if (reduced) return;
     this.screenShake.intensity = Math.max(this.screenShake.intensity, intensity);
   }
 
@@ -434,6 +445,7 @@ interface BlockPiece {
   colorIndex: number;
   x: number; y: number;
   scale: number; targetScale: number;
+  entryProgress: number; // 0→1 for entrance animation
 }
 
 interface GameState {
@@ -524,9 +536,9 @@ class AudioManager {
     } catch {}
   }
 
-  private createOsc(freq: number, type: OscillatorType = "sine"): OscillatorNode {
+  private createOsc(freq: number, type: OscillatorType = "sine", filterNode?: BiquadFilterNode): OscillatorNode {
     const o = this.ctx!.createOscillator(); o.type = type; o.frequency.value = freq;
-    o.onended = () => { try { o.disconnect(); } catch {} };
+    o.onended = () => { try { o.disconnect(); if (filterNode) filterNode.disconnect(); } catch {} };
     return o;
   }
   private createGainNode(v: number): GainNode {
@@ -579,10 +591,10 @@ class AudioManager {
     if (!this.ctx || !this.sfxGain) return;
     const now = this.ctx.currentTime;
     const freq = 300 + lines * 100;
-    const o = this.createOsc(freq, "sawtooth");
-    const g = this.createGainNode(0.2);
     const f = this.ctx.createBiquadFilter();
     f.type = "lowpass"; f.frequency.value = 2000;
+    const o = this.createOsc(freq, "sawtooth", f);
+    const g = this.createGainNode(0.2);
     o.connect(f); f.connect(g); g.connect(this.sfxGain);
     o.frequency.setValueAtTime(freq, now);
     o.frequency.exponentialRampToValueAtTime(freq * 2, now + 0.2);
@@ -640,10 +652,10 @@ class AudioManager {
   playGameOverSound(): void {
     if (!this.ctx || !this.sfxGain) return;
     const now = this.ctx.currentTime;
-    const o = this.createOsc(400, "sawtooth");
-    const g = this.createGainNode(0.2);
     const f = this.ctx.createBiquadFilter();
     f.type = "lowpass"; f.frequency.value = 1500;
+    const o = this.createOsc(400, "sawtooth", f);
+    const g = this.createGainNode(0.2);
     o.connect(f); f.connect(g); g.connect(this.sfxGain);
     o.frequency.setValueAtTime(400, now);
     o.frequency.exponentialRampToValueAtTime(100, now + 0.8);
@@ -701,10 +713,10 @@ class AudioManager {
   playInvalidSound(): void {
     if (!this.ctx || !this.sfxGain) return;
     const now = this.ctx.currentTime;
-    const o = this.createOsc(200, "square");
-    const g = this.createGainNode(0.08);
     const f = this.ctx.createBiquadFilter();
     f.type = "lowpass"; f.frequency.value = 800;
+    const o = this.createOsc(200, "square", f);
+    const g = this.createGainNode(0.08);
     o.connect(f); f.connect(g); g.connect(this.sfxGain);
     o.frequency.setValueAtTime(200, now);
     o.frequency.exponentialRampToValueAtTime(120, now + 0.12);
@@ -750,6 +762,12 @@ class BlockBlastGame {
   queueY = 0;
   queueCellSize = 0;
 
+  // Background cache
+  private cachedBgGradient: CanvasGradient | null = null;
+  private cachedBgDifficulty = -1;
+  private cachedBgWidth = 0;
+  private cachedBgHeight = 0;
+
   // Drag
   draggedPiece: BlockPiece | null = null;
   draggedPieceIndex = -1;
@@ -757,11 +775,15 @@ class BlockBlastGame {
   dragPos = { x: 0, y: 0 };
   ghostPos: { gridX: number; gridY: number } | null = null;
   isValidPlacement = false;
+  private completionRows: number[] = [];
+  private completionCols: number[] = [];
+  private lastGhostKey = "";
 
   // Timing
   lastTime = 0;
   gameTime = 0;
   isMobile: boolean;
+  reducedMotion: boolean;
   comboHideTimeout = 0;
   displayScore = 0;
 
@@ -782,6 +804,7 @@ class BlockBlastGame {
     this.flash = new ScreenFlash();
 
     this.isMobile = window.matchMedia("(pointer: coarse)").matches;
+    this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.state = this.createInitialState();
     this.setupEventListeners();
     this.resizeCanvas();
@@ -839,7 +862,7 @@ class BlockBlastGame {
   }
 
   calculateLayout(): void {
-    const w = this.canvas.width, h = this.canvas.height;
+    const w = window.innerWidth, h = window.innerHeight;
     const topSafe = this.isMobile ? 60 : 0;
     const hudH = this.isMobile ? 130 : Math.max(90, h * 0.1);
 
@@ -950,13 +973,14 @@ class BlockBlastGame {
       this.state.blockQueue.push({
         cells: shape.cells.map(c => [...c] as [number, number]),
         colorIndex: ci, x: 0, y: 0, scale: 0, targetScale: 1,
+        entryProgress: 0,
       });
     }
     this.positionQueuePieces();
   }
 
   positionQueuePieces(): void {
-    const w = this.canvas.width;
+    const w = window.innerWidth;
     const top = this.queueY + 40;
     const pws: number[] = [], phs: number[] = [];
     for (const p of this.state.blockQueue) {
@@ -1013,6 +1037,8 @@ class BlockBlastGame {
         this.draggedPieceIndex = i;
         this.dragOffset = { x: x - p.x - pw / 2, y: y - p.y - ph / 2 };
         this.dragPos = { x, y };
+        // Press-then-lift animation: briefly shrink before enlarging
+        p.scale = 0.85;
         p.targetScale = 1.2;
         this.audio.playPickupSound();
         triggerHaptic("light");
@@ -1034,6 +1060,28 @@ class BlockBlastGame {
     const gy = Math.floor((cy - this.gridOffsetY) / this.cellSize - pcy + 0.5);
     this.ghostPos = { gridX: gx, gridY: gy };
     this.isValidPlacement = this.canPlacePiece(this.draggedPiece, gx, gy);
+
+    // Pre-compute completion highlight (only when ghost position changes)
+    const ghostKey = `${gx},${gy},${this.isValidPlacement}`;
+    if (ghostKey !== this.lastGhostKey) {
+      this.lastGhostKey = ghostKey;
+      this.completionRows = [];
+      this.completionCols = [];
+      if (this.isValidPlacement && this.draggedPiece) {
+        const simGrid: (number | null)[][] = this.state.grid.map(row => [...row]);
+        for (const [cx, cy] of this.draggedPiece.cells) {
+          simGrid[gy + cy][gx + cx] = this.draggedPiece.colorIndex;
+        }
+        for (let y = 0; y < CONFIG.GRID_SIZE; y++) {
+          if (simGrid[y].every(c => c !== null)) this.completionRows.push(y);
+        }
+        for (let x = 0; x < CONFIG.GRID_SIZE; x++) {
+          let full = true;
+          for (let y = 0; y < CONFIG.GRID_SIZE; y++) if (simGrid[y][x] === null) { full = false; break; }
+          if (full) this.completionCols.push(x);
+        }
+      }
+    }
   }
 
   onPointerUp(): void {
@@ -1077,18 +1125,39 @@ class BlockBlastGame {
         this.state.linesCleared += cleared;
         this.state.streakMultiplier = streakMul * rapidMul;
 
-        // Update difficulty level
+        // Update difficulty level — detect level-ups
+        const prevDiff = this.state.difficulty;
         this.state.difficulty = this.getDifficultyLevel();
+        if (this.state.difficulty > prevDiff) {
+          this.floatingText.add(cx, cy - 60, "LEVEL UP!", "#00eeff", 34);
+          this.floatingText.add(cx, cy - 25, "Level " + (this.state.difficulty + 1), "#88ddff", 22);
+          this.particles.emit(cx, cy, "#00eeff", 20, "star");
+          this.shockwaves.emit(cx, cy, this.cellSize * CONFIG.GRID_SIZE * 0.8, "#00eeff", 3);
+          this.flash.trigger("#00eeff", 0.12);
+          this.audio.playMilestoneSound();
+          triggerHaptic("success");
+        }
 
         const cx = this.gridOffsetX + (CONFIG.GRID_SIZE / 2) * this.cellSize;
         const cy = this.gridOffsetY + (CONFIG.GRID_SIZE / 2) * this.cellSize;
+        // Score popup at the piece placement location for better spatial feedback
+        const placeCx = this.gridOffsetX + (this.ghostPos!.gridX + 0.5) * this.cellSize;
+        const placeCy = this.gridOffsetY + (this.ghostPos!.gridY + 0.5) * this.cellSize;
         this.showClearType(cleared, this.state.combo);
-        this.floatingText.add(cx, cy + 40, "+" + score, "#ffd700", 28);
+        this.floatingText.add(placeCx, placeCy, "+" + score, "#ffd700", 28);
 
         // Show multiplier if significant
         if (streakMul * rapidMul > 1.3) {
           const multText = "x" + (streakMul * rapidMul).toFixed(1);
           this.floatingText.add(cx + 60, cy + 70, multText, "#ff44ff", 22);
+        }
+
+        // Confetti for high combos
+        if (this.state.combo >= 3) {
+          const confettiColors = ["#ff6b6b", "#ffd43b", "#51cf66", "#339af0", "#cc5de8", "#ffa94d"];
+          for (const cc of confettiColors) {
+            this.particles.emit(cx, cy, cc, 3, "confetti");
+          }
         }
 
         // Rapid-fire celebration
@@ -1099,7 +1168,7 @@ class BlockBlastGame {
           triggerHaptic("heavy");
         }
 
-        this.animations.triggerScreenShake(0.2 + cleared * 0.15);
+        this.animations.triggerScreenShake(this.reducedMotion,0.2 + cleared * 0.15);
 
         // Shockwave
         this.shockwaves.emit(cx, cy, this.cellSize * CONFIG.GRID_SIZE * 0.6, "#ffd700", 2 + cleared);
@@ -1117,7 +1186,7 @@ class BlockBlastGame {
           this.particles.emit(cx, cy, "#ffd700", 20, "burst");
           this.shockwaves.emit(cx, cy, this.cellSize * CONFIG.GRID_SIZE, "#00ffcc", 4);
           this.flash.trigger("#00ffcc", 0.15);
-          this.animations.triggerScreenShake(0.8);
+          this.animations.triggerScreenShake(this.reducedMotion,0.8);
           this.audio.playPerfectClearSound();
           triggerHaptic("success");
         }
@@ -1152,8 +1221,10 @@ class BlockBlastGame {
       if (this.ghostPos) {
         this.audio.playInvalidSound();
         triggerHaptic("light");
-        this.animations.triggerScreenShake(0.05);
+        this.animations.triggerScreenShake(this.reducedMotion, 0.05);
       }
+      // Wobble effect: shrink then bounce back
+      this.draggedPiece.scale = 0.7;
       this.draggedPiece.targetScale = 1;
       this.positionQueuePieces();
     }
@@ -1162,6 +1233,9 @@ class BlockBlastGame {
     this.draggedPieceIndex = -1;
     this.ghostPos = null;
     this.isValidPlacement = false;
+    this.completionRows = [];
+    this.completionCols = [];
+    this.lastGhostKey = "";
   }
 
   canPlacePiece(piece: BlockPiece, gx: number, gy: number): boolean {
@@ -1282,7 +1356,20 @@ class BlockBlastGame {
     const isNew = this.state.score > this.state.highScore;
     if (isNew) { this.state.highScore = this.state.score; this.saveHighScore(this.state.score); }
 
-    document.getElementById("finalScore")!.textContent = this.state.score.toString();
+    // Animated score counter on game over
+    const finalScoreEl = document.getElementById("finalScore")!;
+    finalScoreEl.textContent = "0";
+    const targetScore = this.state.score;
+    const countDuration = Math.min(1500, 300 + targetScore * 0.5);
+    const countStart = performance.now();
+    const countUp = () => {
+      const elapsed = performance.now() - countStart;
+      const t = Math.min(1, elapsed / countDuration);
+      const eased = easeOutCubic(t);
+      finalScoreEl.textContent = Math.floor(eased * targetScore).toString();
+      if (t < 1) requestAnimationFrame(countUp);
+    };
+    requestAnimationFrame(countUp);
     document.getElementById("linesCleared")!.textContent = this.state.linesCleared.toString();
     document.getElementById("blocksPlaced")!.textContent = this.state.blocksPlaced.toString();
     document.getElementById("maxCombo2")!.textContent = (this.state.maxCombo || 1).toString();
@@ -1313,7 +1400,7 @@ class BlockBlastGame {
       }
     }
     this.flash.trigger("#ff4444", 0.12);
-    this.animations.triggerScreenShake(0.5);
+    this.animations.triggerScreenShake(this.reducedMotion,0.5);
 
     setTimeout(() => document.getElementById("gameOverScreen")?.classList.remove("hidden"), 500);
   }
@@ -1370,13 +1457,16 @@ class BlockBlastGame {
     this.particles.update(dt);
     this.floatingText.update(dt);
     this.animations.update(dt);
-    this.ambient.update(dt, this.canvas.height);
+    this.ambient.update(dt, window.innerHeight);
     this.shockwaves.update(dt);
     this.flash.update(dt);
 
-    // Animate queue piece scales + idle bob
+    // Animate queue piece scales + entry animation
     for (let i = 0; i < this.state.blockQueue.length; i++) {
       const p = this.state.blockQueue[i];
+      if (p.entryProgress < 1) {
+        p.entryProgress = Math.min(1, p.entryProgress + dt * 3.5);
+      }
       p.scale = lerp(p.scale, p.targetScale, 0.2);
     }
 
@@ -1399,24 +1489,29 @@ class BlockBlastGame {
     const w = window.innerWidth, h = window.innerHeight;
     ctx.clearRect(0, 0, w, h);
 
-    // Dynamic background that shifts with difficulty
+    // Dynamic background that shifts with difficulty (cached)
     const d = this.state.difficulty;
-    const bgColors = [
-      ["#0c0c20", "#111133", "#0d0d28", "#080818"],  // Level 0: deep blue
-      ["#0c0c22", "#131340", "#0d0d30", "#08081c"],  // Level 1: slightly brighter
-      ["#10081c", "#1a1050", "#120d35", "#0a0620"],  // Level 2: purple tint
-      ["#140818", "#201048", "#18082e", "#0c041a"],  // Level 3: deeper purple
-      ["#180810", "#280830", "#1e0620", "#100412"],  // Level 4: red-purple
-      ["#1a0808", "#2a1010", "#1c0808", "#0e0404"],  // Level 5: danger red
-      ["#1e0505", "#301008", "#200605", "#120303"],  // Level 6: inferno
-    ];
-    const cols = bgColors[Math.min(d, bgColors.length - 1)];
-    const bg = ctx.createLinearGradient(0, 0, w * 0.3, h);
-    bg.addColorStop(0, cols[0]);
-    bg.addColorStop(0.4, cols[1]);
-    bg.addColorStop(0.7, cols[2]);
-    bg.addColorStop(1, cols[3]);
-    ctx.fillStyle = bg;
+    if (!this.cachedBgGradient || this.cachedBgDifficulty !== d || this.cachedBgWidth !== w || this.cachedBgHeight !== h) {
+      const bgColors = [
+        ["#0c0c20", "#111133", "#0d0d28", "#080818"],
+        ["#0c0c22", "#131340", "#0d0d30", "#08081c"],
+        ["#10081c", "#1a1050", "#120d35", "#0a0620"],
+        ["#140818", "#201048", "#18082e", "#0c041a"],
+        ["#180810", "#280830", "#1e0620", "#100412"],
+        ["#1a0808", "#2a1010", "#1c0808", "#0e0404"],
+        ["#1e0505", "#301008", "#200605", "#120303"],
+      ];
+      const cols = bgColors[Math.min(d, bgColors.length - 1)];
+      this.cachedBgGradient = ctx.createLinearGradient(0, 0, w * 0.3, h);
+      this.cachedBgGradient.addColorStop(0, cols[0]);
+      this.cachedBgGradient.addColorStop(0.4, cols[1]);
+      this.cachedBgGradient.addColorStop(0.7, cols[2]);
+      this.cachedBgGradient.addColorStop(1, cols[3]);
+      this.cachedBgDifficulty = d;
+      this.cachedBgWidth = w;
+      this.cachedBgHeight = h;
+    }
+    ctx.fillStyle = this.cachedBgGradient;
     ctx.fillRect(0, 0, w, h);
 
     // Subtle radial vignette
@@ -1515,8 +1610,8 @@ class BlockBlastGame {
         const rowAlmost = this.rowFill[y] >= CONFIG.ALMOST_FULL_THRESHOLD;
         const colAlmost = this.colFill[x] >= CONFIG.ALMOST_FULL_THRESHOLD;
 
-        if ((rowAlmost || colAlmost) && this.state.grid[y][x] === null) {
-          // Highlight almost-full empty cells with a subtle glow
+        const almostFull = (rowAlmost || colAlmost) && this.state.grid[y][x] === null;
+        if (almostFull) {
           const glowI = 0.08 + 0.04 * Math.sin(this.gameTime * 3);
           ctx.fillStyle = `rgba(255,215,0,${glowI})`;
         } else {
@@ -1525,9 +1620,26 @@ class BlockBlastGame {
         this.roundRect(ctx, cx + cp, cy + cp, this.cellSize - cp * 2, this.cellSize - cp * 2, cr);
         ctx.fill();
 
-        // Subtle cell border
-        ctx.strokeStyle = CONFIG.GRID_CELL_BORDER;
-        ctx.lineWidth = 0.5;
+        // Inner shadow for depth (only on empty cells)
+        if (this.state.grid[y][x] === null) {
+          const inS = this.cellSize - cp * 2;
+          const innerGrad = ctx.createLinearGradient(cx + cp, cy + cp, cx + cp, cy + cp + inS * 0.3);
+          innerGrad.addColorStop(0, "rgba(0,0,0,0.12)");
+          innerGrad.addColorStop(1, "transparent");
+          ctx.fillStyle = innerGrad;
+          this.roundRect(ctx, cx + cp, cy + cp, inS, inS, cr);
+          ctx.fill();
+        }
+
+        // Cell border — golden for almost-full empty cells
+        if (almostFull) {
+          const borderPulse = 0.2 + 0.15 * Math.sin(this.gameTime * 4);
+          ctx.strokeStyle = `rgba(255,215,0,${borderPulse})`;
+          ctx.lineWidth = 1.2;
+        } else {
+          ctx.strokeStyle = CONFIG.GRID_CELL_BORDER;
+          ctx.lineWidth = 0.5;
+        }
         this.roundRect(ctx, cx + cp, cy + cp, this.cellSize - cp * 2, this.cellSize - cp * 2, cr);
         ctx.stroke();
 
@@ -1538,6 +1650,15 @@ class BlockBlastGame {
           const placeS = this.animations.getPlaceScale(x, y);
           this.renderBlock(ctx, cx + this.cellSize / 2, cy + this.cellSize / 2,
             this.cellSize - cp * 2 - 4, color, placeS);
+          // Brief white flash on freshly placed blocks
+          if (placeS < 0.95) {
+            ctx.save();
+            ctx.globalAlpha = (1 - placeS) * 0.4;
+            ctx.fillStyle = "#ffffff";
+            this.roundRect(ctx, cx + cp, cy + cp, this.cellSize - cp * 2, this.cellSize - cp * 2, cr);
+            ctx.fill();
+            ctx.restore();
+          }
         }
 
         if (clearSt.clearing && clearSt.progress > 0) ctx.restore();
@@ -1546,41 +1667,21 @@ class BlockBlastGame {
   }
 
   renderCompletionHighlight(ctx: CanvasRenderingContext2D): void {
-    // If a piece is being dragged to a valid position, highlight rows/cols that would complete
-    if (!this.draggedPiece || !this.ghostPos || !this.isValidPlacement) return;
-    const gx = this.ghostPos.gridX, gy = this.ghostPos.gridY;
-
-    // Simulate placing the piece
-    const simGrid: (number | null)[][] = this.state.grid.map(row => [...row]);
-    for (const [cx, cy] of this.draggedPiece.cells) {
-      simGrid[gy + cy][gx + cx] = this.draggedPiece.colorIndex;
-    }
+    if (this.completionRows.length === 0 && this.completionCols.length === 0) return;
 
     const pulse = 0.12 + 0.06 * Math.sin(this.gameTime * 5);
     const gridW = CONFIG.GRID_SIZE * this.cellSize;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = "#ffd700";
 
-    // Check rows
-    for (let y = 0; y < CONFIG.GRID_SIZE; y++) {
-      if (simGrid[y].every(c => c !== null)) {
-        ctx.save();
-        ctx.globalAlpha = pulse;
-        ctx.fillStyle = "#ffd700";
-        ctx.fillRect(this.gridOffsetX, this.gridOffsetY + y * this.cellSize, gridW, this.cellSize);
-        ctx.restore();
-      }
+    for (const y of this.completionRows) {
+      ctx.fillRect(this.gridOffsetX, this.gridOffsetY + y * this.cellSize, gridW, this.cellSize);
     }
-    // Check cols
-    for (let x = 0; x < CONFIG.GRID_SIZE; x++) {
-      let full = true;
-      for (let y = 0; y < CONFIG.GRID_SIZE; y++) if (simGrid[y][x] === null) { full = false; break; }
-      if (full) {
-        ctx.save();
-        ctx.globalAlpha = pulse;
-        ctx.fillStyle = "#ffd700";
-        ctx.fillRect(this.gridOffsetX + x * this.cellSize, this.gridOffsetY, this.cellSize, gridW);
-        ctx.restore();
-      }
+    for (const x of this.completionCols) {
+      ctx.fillRect(this.gridOffsetX + x * this.cellSize, this.gridOffsetY, this.cellSize, gridW);
     }
+    ctx.restore();
   }
 
   renderGhost(ctx: CanvasRenderingContext2D): void {
@@ -1589,6 +1690,20 @@ class BlockBlastGame {
     const color = CONFIG.BLOCK_COLORS[this.draggedPiece.colorIndex];
 
     if (this.isValidPlacement) {
+      // Drop shadow beneath ghost blocks
+      ctx.save();
+      ctx.globalAlpha = 0.15;
+      ctx.fillStyle = "#000000";
+      for (const [cx, cy] of this.draggedPiece.cells) {
+        const x = gx + cx, y = gy + cy;
+        const px = this.gridOffsetX + x * this.cellSize;
+        const py = this.gridOffsetY + y * this.cellSize;
+        this.roundRect(ctx, px + 4, py + 6, this.cellSize - 8, this.cellSize - 6, 6);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Ghost blocks with glow
       const pulse = 0.35 + 0.15 * Math.sin(this.gameTime * 6);
       ctx.save();
       ctx.globalAlpha = pulse;
@@ -1625,8 +1740,8 @@ class BlockBlastGame {
 
   renderQueue(ctx: CanvasRenderingContext2D): void {
     // Queue container glass panel
-    const qw = Math.min(this.canvas.width - 40, 500);
-    const qx = (this.canvas.width - qw) / 2;
+    const qw = Math.min(window.innerWidth - 40, 500);
+    const qx = (window.innerWidth - qw) / 2;
     const qh = this.isMobile ? 130 : 150;
     ctx.save();
     ctx.globalAlpha = 0.08;
@@ -1646,7 +1761,7 @@ class BlockBlastGame {
     ctx.font = "600 13px Nunito, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText("DRAG TO PLACE", this.canvas.width / 2, this.queueY + 2);
+    ctx.fillText("DRAG TO PLACE", window.innerWidth / 2, this.queueY + 2);
 
     for (let i = 0; i < this.state.blockQueue.length; i++) {
       if (i === this.draggedPieceIndex) continue;
@@ -1656,11 +1771,15 @@ class BlockBlastGame {
       const pw = (b.maxX - b.minX + 1) * this.queueCellSize;
       const ph = (b.maxY - b.minY + 1) * this.queueCellSize;
       const pcx = piece.x + pw / 2, pcy = piece.y + ph / 2;
-      // Idle bob
-      const bob = Math.sin(this.gameTime * 1.8 + i * 1.2) * 3;
+      // Entry animation (slide up from below + elastic) + idle bob
+      const entryT = piece.entryProgress < 1 ? easeOutBack(piece.entryProgress) : 1;
+      const entryOffset = (1 - entryT) * 40;
+      const entryAlpha = entryT;
+      const bob = piece.entryProgress >= 1 ? Math.sin(this.gameTime * 1.8 + i * 1.2) * 3 : 0;
 
       ctx.save();
-      ctx.translate(pcx, pcy + bob);
+      ctx.globalAlpha *= entryAlpha;
+      ctx.translate(pcx, pcy + bob + entryOffset);
       ctx.scale(piece.scale, piece.scale);
       ctx.translate(-pcx, -pcy);
 
