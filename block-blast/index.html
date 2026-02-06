@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, minimal-ui">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Grid Surge</title>
@@ -25,6 +25,10 @@
             touch-action: none;
             user-select: none;
             -webkit-user-select: none;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
         }
 
         canvas {
@@ -113,6 +117,25 @@
             50% { transform: scale(1.1); }
         }
 
+        .multiplier-badge {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #ff44ff;
+            text-align: center;
+            margin-top: 4px;
+            padding: 2px 10px;
+            background: linear-gradient(135deg, rgba(255,68,255,0.2), rgba(255,100,0,0.15));
+            border-radius: 12px;
+            border: 1px solid rgba(255,68,255,0.4);
+            animation: multPulse 0.8s ease-in-out infinite;
+        }
+
+        @keyframes multPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(1.05); }
+        }
+
         .combo-display {
             position: fixed;
             top: 40%;
@@ -131,7 +154,8 @@
 
         .combo-display #comboText {
             display: inline-block;
-            background: linear-gradient(180deg, #ffffff 0%, #ffd700 100%);
+            background: linear-gradient(180deg, #ffffff 0%, #ffd700 50%, #ff8800 100%);
+            background-size: 100% 200%;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -233,12 +257,24 @@
             align-items: center;
             background: radial-gradient(ellipse at center, rgba(22, 33, 62, 0.95) 0%, rgba(15, 15, 35, 0.98) 100%);
             z-index: 10;
-            transition: opacity 0.4s ease, visibility 0.4s ease;
+            transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .overlay.hidden {
             opacity: 0;
             visibility: hidden;
+            transform: scale(1.05);
+        }
+
+        #startScreen {
+            background: radial-gradient(ellipse at 30% 30%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
+                        radial-gradient(ellipse at 70% 70%, rgba(118, 75, 162, 0.12) 0%, transparent 50%),
+                        radial-gradient(ellipse at center, rgba(22, 33, 62, 0.97) 0%, rgba(15, 15, 35, 0.99) 100%);
+        }
+
+        #gameOverScreen {
+            background: radial-gradient(ellipse at 50% 40%, rgba(255, 100, 50, 0.08) 0%, transparent 50%),
+                        radial-gradient(ellipse at center, rgba(22, 33, 62, 0.96) 0%, rgba(15, 15, 35, 0.98) 100%);
         }
 
         .content {
@@ -337,7 +373,16 @@
         }
 
         .btn:active {
-            transform: translateY(-1px);
+            transform: translateY(-1px) scale(0.98);
+        }
+
+        #startButton {
+            animation: btnGlow 2s ease-in-out infinite;
+        }
+
+        @keyframes btnGlow {
+            0%, 100% { box-shadow: 0 8px 30px rgba(102, 126, 234, 0.4), 0 4px 10px rgba(0,0,0,0.2); }
+            50% { box-shadow: 0 8px 40px rgba(102, 126, 234, 0.6), 0 4px 15px rgba(0,0,0,0.3), 0 0 60px rgba(102, 126, 234, 0.15); }
         }
 
         /* How to Play */
@@ -424,16 +469,20 @@
             font-size: 3rem;
             font-weight: 700;
             margin-bottom: 5px;
-            color: #fff;
             text-transform: uppercase;
             letter-spacing: 6px;
-            text-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            animation: titlePulse 2s ease-in-out infinite;
+            background: linear-gradient(135deg, #ffffff 0%, #ff9999 30%, #ffffff 60%, #ff8888 100%);
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 4px 20px rgba(255,100,100,0.3));
+            animation: titleShift 3s ease-in-out infinite;
         }
 
-        @keyframes titlePulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
+        @keyframes titleShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
         }
 
         .game-over-header {
@@ -575,6 +624,19 @@
         .stat-item:nth-child(2) { animation-delay: 0.2s; }
         .stat-item:nth-child(3) { animation-delay: 0.3s; }
 
+        .stat-item.small {
+            padding: 12px 20px;
+            min-width: 80px;
+        }
+
+        .small-val {
+            font-size: 1.6rem !important;
+        }
+
+        .secondary-stats {
+            margin-top: -15px;
+        }
+
         @keyframes statSlideUp {
             0% {
                 opacity: 0;
@@ -626,7 +688,7 @@
                 gap: 15px;
             }
             #hud {
-                padding: 60px 16px 12px 16px;
+                padding: max(60px, calc(env(safe-area-inset-top) + 12px)) 16px 12px 16px;
             }
             .score-container {
                 padding: 12px 20px;
@@ -688,6 +750,7 @@
             <div class="score-container">
                 <div class="score-label">Score</div>
                 <div class="score-value" id="score">0</div>
+                <div class="multiplier-badge" id="multiplier" style="display:none;">x1.0</div>
             </div>
         </div>
         <div class="hud-section" style="align-items: flex-end;">
@@ -775,15 +838,25 @@
             <div class="stats-row">
                 <div class="stat-item">
                     <div class="stat-value" id="linesCleared">0</div>
-                    <div class="stat-label">Lines Cleared</div>
+                    <div class="stat-label">Lines</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="blocksPlaced">0</div>
-                    <div class="stat-label">Blocks Placed</div>
+                    <div class="stat-label">Blocks</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="maxCombo">x<span id="maxCombo2">1</span></div>
                     <div class="stat-label">Best Combo</div>
+                </div>
+            </div>
+            <div class="stats-row secondary-stats">
+                <div class="stat-item small">
+                    <div class="stat-value small-val" id="diffReached">1</div>
+                    <div class="stat-label">Level</div>
+                </div>
+                <div class="stat-item small">
+                    <div class="stat-value small-val" id="totalClears">0</div>
+                    <div class="stat-label">Total Clears</div>
                 </div>
             </div>
             <button class="btn" id="restartButton">
