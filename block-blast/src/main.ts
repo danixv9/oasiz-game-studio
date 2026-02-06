@@ -380,6 +380,11 @@ class FloatingTextSystem {
       ctx.font = `700 ${s}px Fredoka, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
+      // Text outline for readability
+      ctx.strokeStyle = "rgba(0,0,0,0.5)";
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
+      ctx.strokeText(t.text, t.x, t.y);
       // Glow
       ctx.shadowColor = t.color;
       ctx.shadowBlur = 12;
@@ -616,6 +621,22 @@ class AudioManager {
     g.gain.setValueAtTime(0.2, now);
     g.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
     o.start(now); o.stop(now + 0.35);
+
+    // Whoosh for multi-line clears
+    if (lines >= 2) {
+      const noise = this.ctx.createBufferSource();
+      const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.15, this.ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.05));
+      noise.buffer = buf;
+      const nf = this.ctx.createBiquadFilter();
+      nf.type = "highpass"; nf.frequency.value = 2000 + lines * 500;
+      const ng = this.createGainNode(0.08 + lines * 0.03);
+      noise.connect(nf); nf.connect(ng); ng.connect(this.sfxGain);
+      ng.gain.setValueAtTime(0.08, now);
+      ng.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+      noise.start(now);
+    }
   }
 
   playComboSound(streak: number): void {
@@ -829,6 +850,7 @@ class BlockBlastGame {
   displayScore = 0;
   lastPointerTime = 0;
   newHighScoreShown = false;
+  gridPulse = 0; // 0-1, triggered on clears
 
   // Row/col fill counts (for almost-full indicators)
   rowFill: number[] = new Array(CONFIG.GRID_SIZE).fill(0);
@@ -1147,15 +1169,10 @@ class BlockBlastGame {
 
       const cleared = this.checkAndClearLines();
 
-      // Combo leeway visual: pulse the combo display when leeway is 1 (about to lose)
-      if (cleared === 0 && this.state.combo > 0 && this.state.comboLeeway === 1) {
-        const el = document.getElementById("comboDisplay");
-        if (el) el.style.opacity = "0.5";
-      }
-
       if (cleared > 0) {
         this.state.combo++;
         this.state.comboLeeway = 2;
+        this.updateComboPips();
         this.state.totalClears += cleared;
         this.state.maxCombo = Math.max(this.state.maxCombo, this.state.combo);
         this.audio.playClearSound(cleared);
@@ -1202,7 +1219,9 @@ class BlockBlastGame {
         const placeCx = this.gridOffsetX + (this.ghostPos!.gridX + 0.5) * this.cellSize;
         const placeCy = this.gridOffsetY + (this.ghostPos!.gridY + 0.5) * this.cellSize;
         this.showClearType(cleared, this.state.combo);
-        this.floatingText.add(placeCx, placeCy, "+" + score, "#ffd700", 28);
+        const scoreColor = score >= 400 ? "#ffd700" : score >= 200 ? "#ffffff" : "#a0d8ff";
+        const scoreSize = score >= 400 ? 34 : score >= 200 ? 28 : 24;
+        this.floatingText.add(placeCx, placeCy, "+" + score, scoreColor, scoreSize);
 
         // Show multiplier if significant
         if (streakMul * rapidMul > 1.3) {
@@ -1233,8 +1252,17 @@ class BlockBlastGame {
         this.flash.trigger("#ffffff", 0.08 + cleared * 0.04);
         triggerHaptic(cleared >= 3 ? "heavy" : "medium");
 
-        // Check perfect clear (grid completely empty)
+        // Check clears and fill
+        const prevFill = this.state.gridFillPct;
         this.updateFillCounts();
+
+        // "Close call" — cleared lines when grid was nearly full
+        if (prevFill > 0.80 && this.state.gridFillPct < prevFill - 0.1) {
+          this.floatingText.add(cx, cy + 100, "CLUTCH!", "#00ff88", 26);
+          this.particles.emit(cx, cy, "#00ff88", 10, "star");
+        }
+
+        // Perfect clear (grid completely empty)
         if (this.state.gridFillPct === 0) {
           const bonus = 500 + this.getDifficultyLevel() * 100;
           this.state.score += bonus;
@@ -1272,6 +1300,7 @@ class BlockBlastGame {
       } else {
         if (this.state.combo > 0) {
           this.state.comboLeeway--;
+          this.updateComboPips();
           if (this.state.comboLeeway <= 0) { this.hideCombo(); this.state.combo = 0; this.state.streakMultiplier = 1; }
         }
       }
@@ -1399,6 +1428,9 @@ class BlockBlastGame {
       if (total >= 2) this.particles.emit(cx, cy, "#ffffff", 8, "star");
     }, 150);
 
+    // Trigger grid pulse effect
+    this.gridPulse = Math.min(1, 0.3 + total * 0.15);
+
     // Clear grid after animation starts
     setTimeout(() => {
       for (const key of cells) {
@@ -1481,6 +1513,13 @@ class BlockBlastGame {
     setTimeout(() => document.getElementById("gameOverScreen")?.classList.remove("hidden"), 500);
   }
 
+  updateComboPips(): void {
+    const pip1 = document.getElementById("pip1");
+    const pip2 = document.getElementById("pip2");
+    if (pip1) pip1.classList.toggle("used", this.state.comboLeeway < 2);
+    if (pip2) pip2.classList.toggle("used", this.state.comboLeeway < 1);
+  }
+
   showClearType(lines: number, streak: number): void {
     const el = document.getElementById("comboDisplay")!;
     const txt = document.getElementById("comboText")!;
@@ -1553,6 +1592,9 @@ class BlockBlastGame {
 
     // Smooth difficulty transition
     this.smoothDifficulty = lerp(this.smoothDifficulty, this.state.difficulty, dt * 2);
+
+    // Grid pulse decay
+    if (this.gridPulse > 0) this.gridPulse = Math.max(0, this.gridPulse - dt * 4);
 
     // Smooth score counting
     if (this.displayScore !== this.state.score) {
@@ -1658,6 +1700,17 @@ class BlockBlastGame {
     const borderR = 14;
     const gridW = CONFIG.GRID_SIZE * this.cellSize;
 
+    // Grid pulse scale effect on line clear
+    if (this.gridPulse > 0.01) {
+      const pulseScale = 1 + this.gridPulse * 0.015;
+      const centerX = this.gridOffsetX + gridW / 2;
+      const centerY = this.gridOffsetY + gridW / 2;
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(pulseScale, pulseScale);
+      ctx.translate(-centerX, -centerY);
+    }
+
     // Grid outer glow
     const danger = this.state.gridFillPct > CONFIG.DANGER_THRESHOLD;
     const glowColor = danger ? "rgba(255,60,60,0.12)" : "rgba(100,120,255,0.08)";
@@ -1672,11 +1725,24 @@ class BlockBlastGame {
     ctx.fill();
     ctx.restore();
 
-    // Grid border glow line
+    // Grid border — gradient that shifts with difficulty
     ctx.save();
-    ctx.strokeStyle = danger
-      ? `rgba(255,80,80,${0.2 * pulse})`
-      : `rgba(100,130,255,${0.12 * pulse})`;
+    const borderGrad = ctx.createLinearGradient(
+      this.gridOffsetX, this.gridOffsetY,
+      this.gridOffsetX + gridW, this.gridOffsetY + gridW
+    );
+    if (danger) {
+      borderGrad.addColorStop(0, `rgba(255,80,80,${0.3 * pulse})`);
+      borderGrad.addColorStop(0.5, `rgba(255,120,60,${0.2 * pulse})`);
+      borderGrad.addColorStop(1, `rgba(255,80,80,${0.3 * pulse})`);
+    } else {
+      const d = this.state.difficulty;
+      const hue = 230 + d * 15; // Shifts from blue toward purple
+      borderGrad.addColorStop(0, `hsla(${hue},70%,60%,${0.15 * pulse})`);
+      borderGrad.addColorStop(0.5, `hsla(${hue + 30},60%,50%,${0.1 * pulse})`);
+      borderGrad.addColorStop(1, `hsla(${hue},70%,60%,${0.15 * pulse})`);
+    }
+    ctx.strokeStyle = borderGrad;
     ctx.lineWidth = 1.5;
     this.roundRect(ctx,
       this.gridOffsetX - padding, this.gridOffsetY - padding,
@@ -1729,6 +1795,11 @@ class BlockBlastGame {
           const borderPulse = 0.2 + 0.15 * Math.sin(this.gameTime * 4);
           ctx.strokeStyle = `rgba(255,215,0,${borderPulse})`;
           ctx.lineWidth = 1.2;
+        } else if (this.state.gridFillPct > CONFIG.DANGER_THRESHOLD) {
+          // Danger mode: reddish borders
+          const dangerT = (this.state.gridFillPct - CONFIG.DANGER_THRESHOLD) / (1 - CONFIG.DANGER_THRESHOLD);
+          ctx.strokeStyle = `rgba(${Math.round(46 + dangerT * 100)},${Math.round(46 - dangerT * 20)},${Math.round(94 - dangerT * 50)},${0.4 + dangerT * 0.3})`;
+          ctx.lineWidth = 0.5 + dangerT * 0.5;
         } else {
           ctx.strokeStyle = CONFIG.GRID_CELL_BORDER;
           ctx.lineWidth = 0.5;
@@ -1743,6 +1814,16 @@ class BlockBlastGame {
           const placeS = this.animations.getPlaceScale(x, y);
           this.renderBlock(ctx, cx + this.cellSize / 2, cy + this.cellSize / 2,
             this.cellSize - cp * 2 - 4, color, placeS);
+          // Subtle positional brightness variation
+          const posVar = ((x + y) % 2 === 0) ? 0.04 : -0.02;
+          if (posVar !== 0) {
+            ctx.save();
+            ctx.globalAlpha = Math.abs(posVar);
+            ctx.fillStyle = posVar > 0 ? "#ffffff" : "#000000";
+            this.roundRect(ctx, cx + cp + 2, cy + cp + 2, this.cellSize - cp * 2 - 4, this.cellSize - cp * 2 - 4, cr);
+            ctx.fill();
+            ctx.restore();
+          }
           // Brief white flash on freshly placed blocks
           if (placeS < 0.95) {
             ctx.save();
@@ -1757,6 +1838,9 @@ class BlockBlastGame {
         if (clearSt.clearing && clearSt.progress > 0) ctx.restore();
       }
     }
+
+    // Close grid pulse scale
+    if (this.gridPulse > 0.01) ctx.restore();
   }
 
   renderCompletionHighlight(ctx: CanvasRenderingContext2D): void {
