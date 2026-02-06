@@ -124,15 +124,6 @@ export const GAMES: Game[] = [
     isNew: true,
   },
   {
-    id: 'perfect-drop',
-    title: 'Perfect Drop',
-    description:
-      'Drop with pinpoint accuracy. Precision timing is everything.',
-    category: 'casual',
-    icon: '🎯',
-    gradient: ['#14B8A6', '#10B981'],
-  },
-  {
     id: 'police-chase',
     title: 'Police Chase',
     description:
