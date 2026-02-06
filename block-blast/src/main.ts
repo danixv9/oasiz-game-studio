@@ -565,7 +565,17 @@ class AudioManager {
 
   stopMusic(): void {
     if (this.currentMusicSource) {
-      try { this.currentMusicSource.stop(); this.currentMusicSource.disconnect(); } catch {}
+      // Fade out over 300ms instead of abrupt stop
+      if (this.ctx && this.musicGain) {
+        try {
+          this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, this.ctx.currentTime);
+          this.musicGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.3);
+          const src = this.currentMusicSource;
+          setTimeout(() => { try { src.stop(); src.disconnect(); } catch {} }, 350);
+        } catch { try { this.currentMusicSource.stop(); this.currentMusicSource.disconnect(); } catch {} }
+      } else {
+        try { this.currentMusicSource.stop(); this.currentMusicSource.disconnect(); } catch {}
+      }
       this.currentMusicSource = null;
     }
   }
@@ -573,6 +583,9 @@ class AudioManager {
   private playBuffer(buf: AudioBuffer | null, loop = true): void {
     if (!this.ctx || !this.musicGain || !buf) return;
     this.stopMusic();
+    // Fade in over 300ms
+    this.musicGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    this.musicGain.gain.linearRampToValueAtTime(0.4, this.ctx.currentTime + 0.5);
     const s = this.ctx.createBufferSource();
     s.buffer = buf; s.loop = loop;
     s.connect(this.musicGain); s.start(0);
@@ -876,6 +889,15 @@ class BlockBlastGame {
 
     window.addEventListener("resize", () => this.resizeCanvas());
 
+    // Show best score on start screen
+    const hs = this.loadHighScore();
+    if (hs > 0) {
+      const bestEl = document.getElementById("startBestScore");
+      const bestVal = document.getElementById("startBestValue");
+      if (bestEl) bestEl.style.display = "block";
+      if (bestVal) bestVal.textContent = hs.toString();
+    }
+
     // Pause/resume when app goes to background
     document.addEventListener("visibilitychange", () => {
       if (document.hidden && this.state.started && !this.state.gameOver) {
@@ -929,17 +951,18 @@ class BlockBlastGame {
   calculateLayout(): void {
     const w = window.innerWidth, h = window.innerHeight;
     const topSafe = this.isMobile ? 60 : 0;
-    const hudH = this.isMobile ? 130 : Math.max(90, h * 0.1);
+    const isLandscape = w > h * 1.2;
+    const hudH = this.isMobile ? (isLandscape ? 80 : 130) : Math.max(90, h * 0.1);
 
     if (this.isMobile) {
-      const qH = 150;
-      const maxGW = w * 0.95;
-      const avail = h - topSafe - hudH - qH;
+      const qH = isLandscape ? 0 : 150; // In landscape, queue is conceptually to the side
+      const maxGW = isLandscape ? h * 0.8 : w * 0.95;
+      const avail = isLandscape ? h - topSafe - 40 : h - topSafe - hudH - qH;
       this.cellSize = Math.min(maxGW / CONFIG.GRID_SIZE, avail * 0.95 / CONFIG.GRID_SIZE);
       const gw = this.cellSize * CONFIG.GRID_SIZE;
-      this.gridOffsetX = (w - gw) / 2;
-      this.gridOffsetY = topSafe + hudH;
-      this.queueY = this.gridOffsetY + gw + 20;
+      this.gridOffsetX = isLandscape ? (w * 0.45 - gw / 2) : (w - gw) / 2;
+      this.gridOffsetY = isLandscape ? (h - gw) / 2 : topSafe + hudH;
+      this.queueY = isLandscape ? (h - gw) / 2 : this.gridOffsetY + gw + 20;
       this.queueCellSize = Math.min(this.cellSize * 0.55, 32);
     } else {
       const tqcs = 38;
@@ -1093,6 +1116,7 @@ class BlockBlastGame {
 
   onPointerDown(x: number, y: number): void {
     if (!this.state.started || this.state.gameOver) return;
+    this.audio.ensureResumed(); // Resume AudioContext on any user gesture
     // Debounce rapid taps (50ms cooldown)
     const now = performance.now();
     if (now - this.lastPointerTime < 50) return;
@@ -1381,6 +1405,22 @@ class BlockBlastGame {
     for (const y of rows) for (let x = 0; x < CONFIG.GRID_SIZE; x++) cells.add(x + "," + y);
     for (const x of cols) for (let y = 0; y < CONFIG.GRID_SIZE; y++) cells.add(x + "," + y);
 
+    // Row/col flash lines
+    for (const row of rows) {
+      const fy = this.gridOffsetY + (row + 0.5) * this.cellSize;
+      const gw = CONFIG.GRID_SIZE * this.cellSize;
+      setTimeout(() => {
+        this.shockwaves.emit(this.gridOffsetX + gw / 2, fy, gw * 0.7, "#ffffff", 2);
+      }, 50);
+    }
+    for (const col of cols) {
+      const fx = this.gridOffsetX + (col + 0.5) * this.cellSize;
+      const gh = CONFIG.GRID_SIZE * this.cellSize;
+      setTimeout(() => {
+        this.shockwaves.emit(fx, this.gridOffsetY + gh / 2, gh * 0.7, "#ffffff", 2);
+      }, 50);
+    }
+
     // Row sweep
     for (const row of rows) {
       for (let x = 0; x < CONFIG.GRID_SIZE; x++) {
@@ -1489,7 +1529,7 @@ class BlockBlastGame {
     const nhEl = document.getElementById("newHighScore")!;
     if (isNew) nhEl.classList.add("show"); else nhEl.classList.remove("show");
 
-    // Grid dissolve effect
+    // Grid dissolve effect — spiral outward from center
     const cx = this.gridOffsetX + (CONFIG.GRID_SIZE / 2) * this.cellSize;
     const cy = this.gridOffsetY + (CONFIG.GRID_SIZE / 2) * this.cellSize;
     for (let y = 0; y < CONFIG.GRID_SIZE; y++) {
@@ -1499,10 +1539,15 @@ class BlockBlastGame {
           const c = CONFIG.BLOCK_COLORS[ci];
           const px = this.gridOffsetX + (x + 0.5) * this.cellSize;
           const py = this.gridOffsetY + (y + 0.5) * this.cellSize;
-          const delay = (Math.abs(x - 3.5) + Math.abs(y - 3.5)) * 30;
+          // Spiral delay based on angle + distance
+          const dx = x - 3.5, dy = y - 3.5;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const angle = Math.atan2(dy, dx);
+          const delay = dist * 40 + (angle + Math.PI) * 15;
           setTimeout(() => {
-            this.particles.emit(px, py, c.main, 4, "clear");
+            this.particles.emit(px, py, c.main, 5, "clear");
             this.particles.emit(px, py, c.glow, 2, "ember");
+            this.particles.emit(px, py, "#ffffff", 1, "star");
           }, delay);
         }
       }
@@ -1548,6 +1593,16 @@ class BlockBlastGame {
     document.getElementById("highScore")!.textContent = this.state.highScore.toString();
     const lvlEl = document.getElementById("levelIndicator");
     if (lvlEl) lvlEl.textContent = "Lv." + (this.state.difficulty + 1);
+    // Level progress bar
+    const progFill = document.getElementById("levelProgressFill");
+    if (progFill) {
+      const steps = CONFIG.DIFFICULTY_SCORE_STEPS;
+      const d = this.state.difficulty;
+      const prevThresh = d > 0 ? steps[d - 1] : 0;
+      const nextThresh = d < steps.length ? steps[d] : steps[steps.length - 1] + 5000;
+      const pct = clamp((this.state.score - prevThresh) / (nextThresh - prevThresh) * 100, 0, 100);
+      progFill.style.width = pct + "%";
+    }
     // Update multiplier indicator + score glow
     const multEl = document.getElementById("multiplier");
     const scoreContainer = document.querySelector(".score-container") as HTMLElement;
@@ -1920,8 +1975,9 @@ class BlockBlastGame {
     const qw = Math.min(window.innerWidth - 40, 500);
     const qx = (window.innerWidth - qw) / 2;
     const qh = this.isMobile ? 130 : 150;
+    const isDragging = this.draggedPiece !== null;
     ctx.save();
-    ctx.globalAlpha = 0.08;
+    ctx.globalAlpha = isDragging ? 0.04 : 0.08;
     ctx.fillStyle = "#ffffff";
     this.roundRect(ctx, qx, this.queueY - 5, qw, qh, 16);
     ctx.fill();

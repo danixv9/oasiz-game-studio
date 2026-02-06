@@ -158,6 +158,23 @@
             letter-spacing: 1px;
         }
 
+        .level-progress {
+            width: 100%;
+            height: 3px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+
+        .level-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
         @keyframes multPulse {
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.85; transform: scale(1.05); }
@@ -355,11 +372,11 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.3), inset 0 2px 0 rgba(255,255,255,0.3);
         }
 
-        .logo-block:nth-child(1) { background: linear-gradient(135deg, #ff6b6b, #ee5a5a); animation-delay: 0s; }
-        .logo-block:nth-child(2) { background: linear-gradient(135deg, #ffa94d, #ff922b); animation-delay: 0.1s; }
-        .logo-block:nth-child(3) { background: linear-gradient(135deg, #ffd43b, #fab005); animation-delay: 0.2s; }
-        .logo-block:nth-child(4) { background: linear-gradient(135deg, #51cf66, #40c057); animation-delay: 0.3s; }
-        .logo-block:nth-child(5) { background: linear-gradient(135deg, #339af0, #228be6); animation-delay: 0.4s; }
+        .logo-block:nth-child(1) { background: linear-gradient(135deg, #ff6b6b, #ee5a5a); animation-delay: 0s; box-shadow: 0 4px 15px rgba(255,107,107,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
+        .logo-block:nth-child(2) { background: linear-gradient(135deg, #ffa94d, #ff922b); animation-delay: 0.1s; box-shadow: 0 4px 15px rgba(255,169,77,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
+        .logo-block:nth-child(3) { background: linear-gradient(135deg, #ffd43b, #fab005); animation-delay: 0.2s; box-shadow: 0 4px 15px rgba(255,212,59,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
+        .logo-block:nth-child(4) { background: linear-gradient(135deg, #51cf66, #40c057); animation-delay: 0.3s; box-shadow: 0 4px 15px rgba(81,207,102,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
+        .logo-block:nth-child(5) { background: linear-gradient(135deg, #339af0, #228be6); animation-delay: 0.4s; box-shadow: 0 4px 15px rgba(51,154,240,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
 
         @keyframes logoFloat {
             0%, 100% { transform: translateY(0px) rotate(0deg); }
@@ -382,8 +399,27 @@
         .subtitle {
             font-size: 1.1rem;
             color: rgba(255,255,255,0.5);
-            margin-bottom: 40px;
+            margin-bottom: 20px;
             font-weight: 400;
+        }
+
+        .start-best-score {
+            margin-bottom: 25px;
+            font-family: 'Fredoka', sans-serif;
+        }
+
+        .start-best-label {
+            font-size: 0.75rem;
+            color: rgba(255,215,0,0.6);
+            letter-spacing: 3px;
+            margin-right: 8px;
+        }
+
+        .start-best-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #ffd700;
+            filter: drop-shadow(0 0 6px rgba(255,215,0,0.3));
         }
 
         /* Buttons */
@@ -758,26 +794,31 @@
                 padding: max(60px, calc(env(safe-area-inset-top) + 12px)) 16px 12px 16px;
             }
             .score-container {
-                padding: 12px 20px;
-                border-radius: 16px;
+                padding: 10px 16px;
+                border-radius: 14px;
             }
             .score-label {
-                font-size: 0.6rem;
+                font-size: 0.55rem;
                 letter-spacing: 2px;
+                margin-bottom: 2px;
             }
             .score-value {
-                font-size: 2rem;
+                font-size: 1.7rem;
             }
             .high-score-container {
-                padding: 12px 20px;
-                border-radius: 16px;
+                padding: 10px 16px;
+                border-radius: 14px;
             }
             .high-score-label {
-                font-size: 0.6rem;
+                font-size: 0.55rem;
                 letter-spacing: 2px;
+                margin-bottom: 2px;
             }
             .high-score-value {
-                font-size: 2rem;
+                font-size: 1.7rem;
+            }
+            .level-indicator {
+                font-size: 0.6rem;
             }
             .combo-display {
                 font-size: 2.5rem;
@@ -819,6 +860,7 @@
                 <div class="score-value" id="score">0</div>
                 <div class="multiplier-badge" id="multiplier" style="display:none;">x1.0</div>
                 <div class="level-indicator" id="levelIndicator">Lv.1</div>
+                <div class="level-progress" id="levelProgress"><div class="level-progress-fill" id="levelProgressFill"></div></div>
             </div>
         </div>
         <div class="hud-section" style="align-items: flex-end;">
@@ -852,6 +894,10 @@
             </div>
             <h1>GRID SURGE</h1>
             <p class="subtitle">Fill rows and columns to clear them!</p>
+            <div class="start-best-score" id="startBestScore" style="display:none;">
+                <span class="start-best-label">BEST</span>
+                <span class="start-best-value" id="startBestValue">0</span>
+            </div>
             <button class="btn" id="startButton">PLAY</button>
             <div class="how-to-play">
                 <h3>HOW TO PLAY</h3>
