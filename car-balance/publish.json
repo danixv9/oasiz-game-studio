@@ -1,0 +1,10 @@
+{
+  "title": "Car Balance",
+  "description": "Keep your car balanced on the beam. Physics-based challenge that tests your reflexes.",
+  "category": "physics",
+  "gameId": "c4rb4-1a5c-4003-8000-000000000003",
+  "bundleId": "ai.oasiz.carbalance",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

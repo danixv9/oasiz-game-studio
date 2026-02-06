@@ -1,0 +1,10 @@
+{
+  "title": "Hoops Jump",
+  "description": "Time your jumps to score through the hoops. Simple to learn, impossible to master.",
+  "category": "arcade",
+  "gameId": "h00p5-jump-4005-8000-000000000005",
+  "bundleId": "ai.oasiz.hoopsjump",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

@@ -1,866 +1,143 @@
-# Mobile Auto-Publishing Plan: Android & iOS
+# Mobile Auto-Publishing: Android & iOS
 
-## Executive Summary
+## Architecture
 
-This plan describes how to automatically publish completed Oasiz games to the Google Play Store (Android) and Apple App Store (iOS). Given that every game already builds to a **single self-contained HTML file** and is fully mobile-responsive with touch controls, the most efficient approach is a **shared native shell + CI/CD pipeline** using **Capacitor** for native wrapping and **Fastlane** for store submission.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Oasiz Arcade (Expo)                       │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  Home Screen: Game Catalog                          │    │
+│  │  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐    │    │
+│  │  │ Block  │  │ Pac-   │  │ Police │  │ Paper  │    │    │
+│  │  │ Blast  │  │ Man    │  │ Chase  │  │ Plane  │... │    │
+│  │  └────────┘  └────────┘  └────────┘  └────────┘    │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                           │                                 │
+│                     tap to play                             │
+│                           ▼                                 │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  Full-Screen WebView                                │    │
+│  │  ┌───────────────────────────────────────────────┐  │    │
+│  │  │  Game HTML (loaded from CDN)                  │  │    │
+│  │  │  https://assets.oasiz.ai/<game>/              │  │    │
+│  │  │                                               │  │    │
+│  │  │  Bridge JS injected before load:              │  │    │
+│  │  │  - window.submitScore → postMessage → native  │  │    │
+│  │  │  - window.triggerHaptic → expo-haptics        │  │    │
+│  │  │  - window.shareRoomCode → Share API           │  │    │
+│  │  └───────────────────────────────────────────────┘  │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  Native Layer: expo-haptics, AsyncStorage, StatusBar        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## What's Built
+
+### Mobile App (`mobile/`)
+
+| File | Purpose |
+|------|---------|
+| `app/_layout.tsx` | Root layout, splash screen, dark theme |
+| `app/(tabs)/_layout.tsx` | Tab navigator (Arcade + Settings) |
+| `app/(tabs)/index.tsx` | Game catalog: featured banner, category filters, 2-column grid |
+| `app/(tabs)/settings.tsx` | Preferences (haptics, sound, music), stats, app info |
+| `app/game/[id].tsx` | Full-screen WebView game player with native bridge |
+| `components/GameCard.tsx` | Animated game cards with gradients, press effects, glow |
+| `components/FeaturedGame.tsx` | Hero banner with floating icon, shimmer, play button |
+| `components/CategoryFilter.tsx` | Horizontal category pills with haptic selection |
+| `lib/games.ts` | Game manifest (15 games), categories, metadata |
+| `lib/bridge.ts` | WebView bridge JS (submitScore, triggerHaptic, shareRoom) |
+| `lib/storage.ts` | AsyncStorage for favorites, high scores, play counts, settings |
+| `constants/colors.ts` | Dark theme palette (neon purple/cyan/pink) |
+| `eas.json` | EAS Build profiles (dev/preview/production) + store submit config |
+| `app.json` | Expo config (bundle ID, splash, icons, plugins) |
+
+### Per-Game Publishing (`*/publish.json`)
+
+Every completed game now has a `publish.json` with:
+- `title`, `description`, `category`
+- `bundleId` (e.g., `ai.oasiz.blockblast`)
+- `version`, `ageRating`, `standalone` flag
+
+### CI/CD (`.github/workflows/publish-mobile.yml`)
+
+Automated pipeline:
+1. **Build all web games** (bun install + bun run build)
+2. **Deploy to CDN** (upload dist/index.html per game)
+3. **EAS Build** (cloud build for iOS + Android)
+4. **EAS Submit** (push to App Store Connect + Google Play)
+
+Triggers: push to `main` (auto) or manual workflow dispatch.
 
 ---
 
-## Current Architecture Assessment
+## How to Ship
 
-| Aspect | Current State |
-|--------|---------------|
-| **Game output** | Single `dist/index.html` per game (all JS/CSS/assets inlined) |
-| **Mobile support** | Full touch controls, responsive canvas, haptic feedback, safe areas |
-| **Build tool** | Bun + Vite with `vite-plugin-singlefile` |
-| **Native framework** | None (pure web) |
-| **CI/CD** | None (manual PR-based deployment) |
-| **Store presence** | Oasiz platform app on TestFlight (React Native) |
-| **Game metadata** | `publish.json` (title, description, category, gameId) |
-| **Completed games** | 13 games ready for publishing |
-
-### Key Strengths
-- Games are already self-contained single HTML files — trivial to embed in a WebView
-- Full mobile-first design with touch controls, haptics, and safe area handling
-- Platform bridge functions (`submitScore`, `triggerHaptic`) already abstracted
-- Consistent build pipeline across all games (`bun run build`)
-
-### Gaps to Address
-- No native wrapper project (Capacitor/Cordova)
-- No CI/CD pipeline (GitHub Actions)
-- No code signing or provisioning infrastructure
-- No automated store metadata generation (screenshots, descriptions)
-- `publish.json` exists only in `draw-the-thing` — needs to be added to all games
-- No app icons or splash screens per game
-
----
-
-## Architecture Decision: Two Publishing Strategies
-
-### Strategy A: Individual Standalone Apps (Recommended for Flagship Games)
-
-Each game becomes its own app on the stores. Best for high-quality games that can stand alone (e.g., Block Blast, Threes, Pacman).
-
-**Pros:** Each game gets its own store listing, ratings, and discoverability.
-**Cons:** More store accounts overhead, more review cycles.
-
-### Strategy B: Oasiz Catalog App with OTA Game Updates (Recommended for Scale)
-
-A single "Oasiz Games" app that loads games from CDN. New games appear automatically without app store review.
-
-**Pros:** One app to maintain, instant game updates, no per-game review.
-**Cons:** Less discoverability per game, single point of failure.
-
-### Recommendation: Hybrid Approach
-
-- Publish a **catalog app** (Strategy B) as the primary distribution channel
-- Promote **top-performing games** as standalone apps (Strategy A) for store discoverability
-- Both strategies share the same Capacitor shell and CI/CD pipeline
-
----
-
-## Implementation Plan
-
-### Phase 1: Project Scaffolding & Native Shell
-
-#### 1.1 Add `publish.json` to All Completed Games
-
-Every completed game needs publishing metadata. Extend the schema:
-
-```json
-{
-  "title": "Block Blast",
-  "description": "Place blocks strategically to clear rows and columns in this addictive puzzle game.",
-  "category": "puzzle",
-  "gameId": "unique-uuid-here",
-  "bundleId": "ai.oasiz.blockblast",
-  "version": "1.0.0",
-  "storeDescription": "Challenge yourself with Block Blast...",
-  "keywords": ["puzzle", "blocks", "strategy"],
-  "ageRating": "4+",
-  "standalone": true
-}
-```
-
-Games requiring `publish.json`:
-- `block-blast/`
-- `cannon-blaster/`
-- `car-balance/`
-- `dual-block-dodge/`
-- `hoops-jump/`
-- `pacman/`
-- `paddle-bounce/`
-- `paper-plane/`
-- `perfect-drop/`
-- `police-chase/`
-- `saw-dodge/`
-- `threes/`
-- `unicycle-hero/`
-- `wordfall/`
-
-#### 1.2 Create Shared Capacitor Shell
-
-Create a `mobile/` directory at the repo root with a reusable Capacitor project:
-
-```
-mobile/
-├── capacitor.config.ts          # Dynamic config (reads from game's publish.json)
-├── package.json                 # Capacitor + plugins
-├── scripts/
-│   ├── prepare-game.sh          # Copies game dist/ into Capacitor www/
-│   ├── configure-app.sh         # Sets bundle ID, app name, icons from publish.json
-│   └── build-all.sh             # Builds all games marked standalone: true
-├── android/                     # Android native project (generated by Capacitor)
-│   ├── app/
-│   │   ├── src/main/
-│   │   │   ├── AndroidManifest.xml
-│   │   │   └── java/.../MainActivity.java
-│   │   ├── build.gradle
-│   │   └── google-services.json
-│   └── build.gradle
-├── ios/                         # iOS native project (generated by Capacitor)
-│   ├── App/
-│   │   ├── App/
-│   │   │   ├── AppDelegate.swift
-│   │   │   ├── Info.plist
-│   │   │   └── capacitor.config.json
-│   │   └── App.xcodeproj
-│   └── Podfile
-├── resources/                   # Shared resources
-│   ├── icon-template.png        # 1024x1024 app icon template
-│   ├── splash-template.png      # Splash screen template
-│   └── store-screenshot-frames/ # Device frame templates
-└── plugins/
-    └── oasiz-bridge/            # Custom Capacitor plugin for platform bridge
-        ├── src/
-        │   ├── index.ts         # submitScore, triggerHaptic implementations
-        │   └── definitions.ts
-        ├── android/             # Native Android haptics + score storage
-        └── ios/                 # Native iOS haptics + score storage
-```
-
-#### 1.3 Capacitor Configuration
-
-```typescript
-// mobile/capacitor.config.ts
-import { CapacitorConfig } from '@capacitor/cli';
-import publishJson from '../CURRENT_GAME/publish.json';
-
-const config: CapacitorConfig = {
-  appId: publishJson.bundleId || 'ai.oasiz.game',
-  appName: publishJson.title,
-  webDir: 'www',
-  server: {
-    androidScheme: 'https'
-  },
-  plugins: {
-    SplashScreen: {
-      launchAutoHide: true,
-      androidScaleType: 'CENTER_CROP',
-      splashFullScreen: true,
-      splashImmersive: true
-    },
-    StatusBar: {
-      style: 'DARK',
-      backgroundColor: '#000000'
-    },
-    Haptics: {
-      // Native haptics replace web vibration API
-    }
-  },
-  ios: {
-    contentInset: 'automatic',
-    preferredContentMode: 'mobile',
-    scheme: 'Oasiz Game'
-  },
-  android: {
-    allowMixedContent: false,
-    captureInput: true,
-    webContentsDebuggingEnabled: false
-  }
-};
-
-export default config;
-```
-
-#### 1.4 Native Bridge Plugin (Replaces window.submitScore / window.triggerHaptic)
-
-Create a Capacitor plugin that provides native implementations:
-
-```typescript
-// mobile/plugins/oasiz-bridge/src/index.ts
-import { registerPlugin } from '@capacitor/core';
-import type { OasizBridgePlugin } from './definitions';
-
-const OasizBridge = registerPlugin<OasizBridgePlugin>('OasizBridge');
-
-// Inject bridge functions into the WebView's window object
-export function initBridge(): void {
-  (window as any).submitScore = (score: number) => {
-    OasizBridge.submitScore({ score });
-  };
-
-  (window as any).triggerHaptic = (type: string) => {
-    OasizBridge.triggerHaptic({ type });
-  };
-}
-```
-
-**iOS native implementation** — uses `UIImpactFeedbackGenerator` for real haptics.
-**Android native implementation** — uses `android.os.Vibrator` / `HapticFeedbackConstants`.
-
----
-
-### Phase 2: CI/CD Pipeline (GitHub Actions)
-
-#### 2.1 Workflow: Build & Publish on Merge to Main
-
-```
-.github/
-└── workflows/
-    ├── build-games.yml           # Builds all games on PR
-    ├── publish-android.yml       # Publishes to Google Play
-    ├── publish-ios.yml           # Publishes to App Store
-    └── publish-catalog.yml       # Updates the catalog app
-```
-
-#### 2.2 Game Detection: Which Games to Publish
-
-The pipeline auto-detects completed games by checking:
-1. Has a `publish.json` with all required fields
-2. Has `"standalone": true` for individual app publishing
-3. `bun run build` succeeds without errors
-4. `bun run typecheck` passes
-
-```yaml
-# .github/workflows/build-games.yml
-name: Build Games
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  detect-games:
-    runs-on: ubuntu-latest
-    outputs:
-      games: ${{ steps.find.outputs.games }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: find
-        run: |
-          games=$(find . -maxdepth 2 -name "publish.json" -exec dirname {} \; | \
-            xargs -I{} sh -c 'jq -r ".title" {}/publish.json >/dev/null 2>&1 && echo {}' | \
-            jq -R -s 'split("\n") | map(select(. != ""))')
-          echo "games=$games" >> $GITHUB_OUTPUT
-
-  build:
-    needs: detect-games
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        game: ${{ fromJson(needs.detect-games.outputs.games) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: |
-          cd ${{ matrix.game }}
-          bun install
-          bun run typecheck
-          bun run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.game }}-dist
-          path: ${{ matrix.game }}/dist/
-```
-
-#### 2.3 Android Publishing Workflow
-
-```yaml
-# .github/workflows/publish-android.yml
-name: Publish to Google Play
-
-on:
-  workflow_dispatch:
-    inputs:
-      game:
-        description: 'Game directory name'
-        required: true
-      track:
-        description: 'Release track (internal/alpha/beta/production)'
-        default: 'internal'
-
-jobs:
-  publish-android:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      # 1. Build the web game
-      - name: Build game
-        run: |
-          cd ${{ inputs.game }}
-          bun install && bun run build
-
-      # 2. Prepare Capacitor project
-      - name: Prepare native shell
-        run: |
-          cd mobile
-          bun install
-          ./scripts/prepare-game.sh ../${{ inputs.game }}
-          npx cap sync android
-
-      # 3. Build Android AAB
-      - name: Build Android App Bundle
-        run: |
-          cd mobile/android
-          ./gradlew bundleRelease
-
-      # 4. Sign the AAB
-      - name: Sign AAB
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: mobile/android/app/build/outputs/bundle/release
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
-
-      # 5. Upload to Google Play via Fastlane
-      - name: Deploy to Google Play
-        uses: maierj/fastlane-action@v3
-        with:
-          lane: 'android deploy'
-          subdirectory: mobile/android
-        env:
-          SUPPLY_JSON_KEY_DATA: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-          SUPPLY_TRACK: ${{ inputs.track }}
-```
-
-#### 2.4 iOS Publishing Workflow
-
-```yaml
-# .github/workflows/publish-ios.yml
-name: Publish to App Store
-
-on:
-  workflow_dispatch:
-    inputs:
-      game:
-        description: 'Game directory name'
-        required: true
-      submit_for_review:
-        description: 'Submit for App Store review'
-        type: boolean
-        default: false
-
-jobs:
-  publish-ios:
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-
-      # 1. Build the web game
-      - name: Build game
-        run: |
-          cd ${{ inputs.game }}
-          bun install && bun run build
-
-      # 2. Prepare Capacitor project
-      - name: Prepare native shell
-        run: |
-          cd mobile
-          bun install
-          ./scripts/prepare-game.sh ../${{ inputs.game }}
-          npx cap sync ios
-
-      # 3. Install CocoaPods
-      - name: Install CocoaPods
-        run: |
-          cd mobile/ios/App
-          pod install
-
-      # 4. Build and archive via Fastlane
-      - name: Build & Upload to App Store Connect
-        uses: maierj/fastlane-action@v3
-        with:
-          lane: 'ios release'
-          subdirectory: mobile/ios
-        env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY: ${{ secrets.ASC_API_KEY }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_URL: ${{ secrets.MATCH_REPO_URL }}
-
-      # 5. Optionally submit for review
-      - name: Submit for review
-        if: ${{ inputs.submit_for_review }}
-        run: |
-          cd mobile/ios
-          bundle exec fastlane deliver --submit_for_review --automatic_release
-```
-
----
-
-### Phase 3: Code Signing & Credentials
-
-#### 3.1 iOS Code Signing (Fastlane Match)
-
-Use **Fastlane Match** to manage certificates and provisioning profiles in a private git repo:
-
-```ruby
-# mobile/ios/Fastfile
-default_platform(:ios)
-
-platform :ios do
-  desc "Sync certificates"
-  lane :certificates do
-    match(type: "appstore", app_identifier: ENV["APP_BUNDLE_ID"])
-  end
-
-  desc "Build and release to App Store Connect"
-  lane :release do
-    certificates
-
-    build_app(
-      workspace: "App/App.xcworkspace",
-      scheme: "App",
-      export_method: "app-store",
-      output_directory: "./build",
-      clean: true
-    )
-
-    upload_to_app_store(
-      skip_metadata: false,
-      skip_screenshots: true,
-      precheck_include_in_app_purchases: false
-    )
-  end
-end
-```
-
-**Required secrets for iOS:**
-| Secret | Description |
-|--------|-------------|
-| `ASC_KEY_ID` | App Store Connect API Key ID |
-| `ASC_ISSUER_ID` | App Store Connect Issuer ID |
-| `ASC_API_KEY` | App Store Connect API Key (.p8 file content, base64) |
-| `MATCH_PASSWORD` | Encryption password for Match certificate repo |
-| `MATCH_REPO_URL` | Private git repo URL for certificates |
-
-#### 3.2 Android Code Signing
-
-```ruby
-# mobile/android/Fastfile
-default_platform(:android)
-
-platform :android do
-  desc "Deploy to Google Play"
-  lane :deploy do
-    upload_to_play_store(
-      aab: "../app/build/outputs/bundle/release/app-release.aab",
-      track: ENV["SUPPLY_TRACK"] || "internal",
-      json_key_data: ENV["SUPPLY_JSON_KEY_DATA"],
-      package_name: ENV["APP_BUNDLE_ID"]
-    )
-  end
-end
-```
-
-**Required secrets for Android:**
-| Secret | Description |
-|--------|-------------|
-| `ANDROID_SIGNING_KEY` | Keystore file (base64 encoded) |
-| `ANDROID_KEY_ALIAS` | Key alias in keystore |
-| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
-| `ANDROID_KEY_PASSWORD` | Key password |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Google Play service account JSON |
-
----
-
-### Phase 4: Store Metadata & Assets
-
-#### 4.1 Per-Game Store Listing Structure
-
-Extend each game directory:
-
-```
-block-blast/
-├── src/
-├── dist/
-├── publish.json                    # Extended metadata
-├── store/
-│   ├── description.txt             # Full store description (4000 chars max)
-│   ├── short-description.txt       # Short description (80 chars max)
-│   ├── changelog.txt               # What's new in this version
-│   ├── keywords.txt                # Search keywords
-│   ├── icon-1024.png               # App icon (1024x1024, no transparency for iOS)
-│   ├── feature-graphic.png         # Google Play feature graphic (1024x500)
-│   ├── screenshots/
-│   │   ├── phone-1.png             # iPhone 6.7" screenshots (1290x2796)
-│   │   ├── phone-2.png
-│   │   ├── phone-3.png
-│   │   ├── tablet-1.png            # iPad 12.9" screenshots (2048x2732)
-│   │   └── android-1.png           # Android phone screenshots
-│   └── privacy-policy-url.txt      # Required URL
-```
-
-#### 4.2 Automated Screenshot Generation
-
-Add a Playwright-based screenshot tool:
-
-```typescript
-// mobile/scripts/generate-screenshots.ts
-import { chromium } from 'playwright';
-
-const DEVICES = [
-  { name: 'iphone-67', width: 1290, height: 2796, scale: 3 },
-  { name: 'ipad-129', width: 2048, height: 2732, scale: 2 },
-  { name: 'android-phone', width: 1080, height: 1920, scale: 1 },
-];
-
-async function captureScreenshots(gamePath: string) {
-  const browser = await chromium.launch();
-
-  for (const device of DEVICES) {
-    const page = await browser.newPage({
-      viewport: {
-        width: device.width / device.scale,
-        height: device.height / device.scale
-      },
-      deviceScaleFactor: device.scale,
-    });
-
-    await page.goto(`file://${gamePath}/dist/index.html`);
-    await page.waitForTimeout(2000); // Wait for game to render
-
-    await page.screenshot({
-      path: `${gamePath}/store/screenshots/${device.name}-start.png`,
-      fullPage: false,
-    });
-
-    // Simulate tap to start the game
-    await page.click('canvas');
-    await page.waitForTimeout(3000); // Capture gameplay
-
-    await page.screenshot({
-      path: `${gamePath}/store/screenshots/${device.name}-gameplay.png`,
-      fullPage: false,
-    });
-  }
-
-  await browser.close();
-}
-```
-
-#### 4.3 App Icon Generation
-
-Use the existing game thumbnail + a script to generate all required icon sizes:
+### First-Time Setup
 
 ```bash
-# mobile/scripts/generate-icons.sh
-# Requires ImageMagick
-INPUT=$1  # e.g., block-blast/store/icon-1024.png
+# 1. Install dependencies
+cd mobile
+bun install
 
-# iOS sizes
-for size in 20 29 40 58 60 76 80 87 120 152 167 180 1024; do
-  convert "$INPUT" -resize ${size}x${size} "ios-icon-${size}.png"
-done
+# 2. Create Expo account & link project
+npx eas login
+npx eas init
 
-# Android adaptive icon (foreground layer)
-for density in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
-  IFS=: read name size <<< "$density"
-  convert "$INPUT" -resize ${size}x${size} "android-${name}.png"
-done
+# 3. Configure credentials
+#    iOS: Apple Developer account + App Store Connect API key
+#    Android: Google Play service account JSON
+npx eas credentials
+
+# 4. Update eas.json submit section with your Apple/Google IDs
+
+# 5. Add EXPO_TOKEN to GitHub repo secrets
 ```
 
----
-
-### Phase 5: Prepare-Game Script (The Glue)
-
-This is the core script that wires everything together:
+### Build & Test Locally
 
 ```bash
-#!/bin/bash
-# mobile/scripts/prepare-game.sh
-# Usage: ./prepare-game.sh ../block-blast
-
-set -euo pipefail
-
-GAME_DIR="$1"
-MOBILE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
-# Validate game has publish.json
-if [ ! -f "$GAME_DIR/publish.json" ]; then
-  echo "ERROR: $GAME_DIR/publish.json not found"
-  exit 1
-fi
-
-# Validate game is built
-if [ ! -f "$GAME_DIR/dist/index.html" ]; then
-  echo "ERROR: $GAME_DIR/dist/index.html not found. Run 'bun run build' first."
-  exit 1
-fi
-
-# Read publish.json
-TITLE=$(jq -r '.title' "$GAME_DIR/publish.json")
-BUNDLE_ID=$(jq -r '.bundleId' "$GAME_DIR/publish.json")
-VERSION=$(jq -r '.version // "1.0.0"' "$GAME_DIR/publish.json")
-
-echo "Preparing: $TITLE ($BUNDLE_ID) v$VERSION"
-
-# 1. Copy built game to Capacitor www directory
-rm -rf "$MOBILE_DIR/www"
-mkdir -p "$MOBILE_DIR/www"
-cp "$GAME_DIR/dist/index.html" "$MOBILE_DIR/www/index.html"
-
-# 2. Inject the native bridge loader into the HTML
-# This script initializes window.submitScore and window.triggerHaptic
-# before the game code runs
-BRIDGE_SCRIPT='<script src="bridge.js"></script>'
-sed -i "s|</head>|${BRIDGE_SCRIPT}</head>|" "$MOBILE_DIR/www/index.html"
-cp "$MOBILE_DIR/plugins/oasiz-bridge/dist/bridge.js" "$MOBILE_DIR/www/bridge.js"
-
-# 3. Update Capacitor config with game-specific values
-cat > "$MOBILE_DIR/capacitor.config.json" <<EOF
-{
-  "appId": "$BUNDLE_ID",
-  "appName": "$TITLE",
-  "webDir": "www",
-  "server": {
-    "androidScheme": "https"
-  },
-  "plugins": {
-    "SplashScreen": {
-      "launchAutoHide": true,
-      "splashFullScreen": true,
-      "splashImmersive": true
-    }
-  }
-}
-EOF
-
-# 4. Update Android package name
-# (Capacitor handles this during 'cap sync')
-
-# 5. Update iOS bundle identifier
-# (Capacitor handles this during 'cap sync')
-
-# 6. Copy app icons if they exist
-if [ -d "$GAME_DIR/store" ]; then
-  echo "Copying store assets..."
-  # Icon generation would happen here
-fi
-
-echo "Game prepared successfully: $TITLE"
+cd mobile
+bun start                  # Start Expo dev server
+bun run ios                # Run on iOS simulator
+bun run android            # Run on Android emulator
 ```
+
+### Build for Stores
+
+```bash
+# Preview build (APK for Android, TestFlight-ready for iOS)
+npx eas build --platform all --profile preview
+
+# Production build (AAB for Play Store, IPA for App Store)
+npx eas build --platform all --profile production
+
+# Submit to stores
+npx eas submit --platform all --latest
+
+# Or do it all at once
+npx eas build --platform all --profile production --auto-submit
+```
+
+### Automated via GitHub Actions
+
+Push to `main` or manually trigger the `Build & Publish Mobile App` workflow.
+
+Set these GitHub secrets:
+| Secret | Value |
+|--------|-------|
+| `EXPO_TOKEN` | From `npx eas whoami` |
+| Apple credentials | Configured via `eas credentials` (stored in EAS) |
+| `google-play-service-account.json` | Google Play API key (place in `mobile/`) |
 
 ---
 
-### Phase 6: Full Automated Pipeline Flow
+## Adding a New Game
 
-```
-Developer merges PR to main
-         │
-         ▼
-┌─────────────────────────┐
-│  GitHub Actions Trigger  │
-│  (push to main branch)   │
-└────────────┬────────────┘
-             │
-             ▼
-┌─────────────────────────┐
-│  Detect Changed Games    │
-│  (diff against last tag) │
-└────────────┬────────────┘
-             │
-             ▼
-┌─────────────────────────┐
-│  Build Each Game         │
-│  bun install && build    │
-│  bun run typecheck       │
-└────────────┬────────────┘
-             │
-             ▼
-┌─────────────────────────┐
-│  For each game with      │
-│  "standalone": true      │
-│  in publish.json:        │
-└────────────┬────────────┘
-             │
-       ┌─────┴─────┐
-       ▼           ▼
-┌─────────┐  ┌──────────┐
-│ Android │  │   iOS    │
-│  Build  │  │  Build   │
-│ (ubuntu)│  │ (macos)  │
-└────┬────┘  └────┬─────┘
-     │            │
-     ▼            ▼
-┌─────────┐  ┌──────────┐
-│ Sign AAB│  │ Sign IPA │
-│ Upload  │  │ Upload   │
-│ to Play │  │ to ASC   │
-│ Console │  │          │
-└────┬────┘  └────┬─────┘
-     │            │
-     ▼            ▼
-┌─────────┐  ┌──────────┐
-│ Internal│  │TestFlight│
-│ Testing │  │  Build   │
-│ Track   │  │          │
-└────┬────┘  └────┬─────┘
-     │            │
-     ▼            ▼
-  [Manual promotion to production]
-```
-
----
-
-### Phase 7: One-Time Setup Checklist
-
-#### Apple Developer Account
-- [ ] Enroll in Apple Developer Program ($99/year)
-- [ ] Create App Store Connect API Key (for CI/CD)
-- [ ] Set up Fastlane Match in a private git repository
-- [ ] Create App IDs for each game in Apple Developer portal
-- [ ] Configure App Store Connect listing for each game
-
-#### Google Play Developer Account
-- [ ] Register for Google Play Developer account ($25 one-time)
-- [ ] Create a Google Cloud service account with Play Developer API access
-- [ ] Generate and download JSON key for the service account
-- [ ] Create app listings for each game in Google Play Console
-- [ ] Generate an upload keystore for Android signing
-
-#### GitHub Repository
-- [ ] Add all secrets to GitHub repo settings (see Phases 3.1 and 3.2)
-- [ ] Create `.github/workflows/` directory with workflow files
-- [ ] Set up a private repo for Fastlane Match certificates
-
-#### Per-Game Setup
-- [ ] Add `publish.json` to every completed game
-- [ ] Generate 1024x1024 app icon for each game
-- [ ] Write store descriptions (short + full)
-- [ ] Capture or generate store screenshots
-- [ ] Set privacy policy URL
-- [ ] Choose age rating / content rating
-
----
-
-### Phase 8: Catalog App (Strategy B — OTA Updates)
-
-For the catalog app approach, the architecture is simpler:
-
-```
-┌──────────────────────────────────────────────┐
-│              Oasiz Games App                  │
-│                                              │
-│  ┌────────┐  ┌────────┐  ┌────────┐         │
-│  │ Block  │  │ Threes │  │ Pacman │  ...     │
-│  │ Blast  │  │        │  │        │         │
-│  └────────┘  └────────┘  └────────┘         │
-│                                              │
-│  ┌──────────────────────────────────┐        │
-│  │         Game WebView             │        │
-│  │  Loads from CDN or local cache   │        │
-│  │  https://assets.oasiz.ai/...     │        │
-│  └──────────────────────────────────┘        │
-│                                              │
-│  Native Bridge: Haptics, Score, Share        │
-└──────────────────────────────────────────────┘
-```
-
-**How it works:**
-1. App ships with a `games-manifest.json` containing all game URLs
-2. On launch, app fetches updated manifest from CDN
-3. New games appear in the catalog without an app update
-4. Games load in a full-screen WebView with native bridge injected
-5. Only the shell app needs App Store / Play Store review
-
-**CI/CD for catalog updates:**
-```yaml
-# When a game is merged:
-# 1. Build the game
-# 2. Upload dist/index.html to CDN (assets.oasiz.ai)
-# 3. Update games-manifest.json on CDN
-# 4. App picks up changes on next launch — no store review needed
-```
-
----
-
-## Recommended Implementation Order
-
-| Step | Task | Effort | Priority |
-|------|------|--------|----------|
-| 1 | Add `publish.json` to all 13 completed games | Low | P0 |
-| 2 | Create `mobile/` Capacitor shell project | Medium | P0 |
-| 3 | Build native bridge plugin (haptics + score) | Medium | P0 |
-| 4 | Set up Apple Developer + Google Play accounts | Low | P0 |
-| 5 | Create GitHub Actions build workflow | Medium | P1 |
-| 6 | Set up Fastlane + code signing (Match) | Medium | P1 |
-| 7 | Create Android publish workflow | Medium | P1 |
-| 8 | Create iOS publish workflow | Medium | P1 |
-| 9 | Generate store assets (icons, screenshots) | Medium | P1 |
-| 10 | Build catalog app with OTA game loading | High | P2 |
-| 11 | Add automated screenshot generation (Playwright) | Low | P2 |
-| 12 | Add version bump automation | Low | P3 |
-
----
-
-## Key Dependencies & Tools
-
-| Tool | Purpose | Cost |
-|------|---------|------|
-| **Capacitor** | Wrap HTML games in native iOS/Android shell | Free (MIT) |
-| **Fastlane** | Automate App Store + Play Store deployment | Free (MIT) |
-| **GitHub Actions** | CI/CD pipeline | Free for public repos, usage-based for private |
-| **Fastlane Match** | iOS certificate/profile management | Free (needs private git repo) |
-| **Apple Developer Program** | iOS App Store publishing | $99/year |
-| **Google Play Developer** | Android Play Store publishing | $25 one-time |
-| **Playwright** | Automated screenshot generation | Free (Apache 2.0) |
-| **ImageMagick** | App icon resizing | Free (Apache 2.0) |
-
----
-
-## Risk Mitigation
-
-| Risk | Mitigation |
-|------|------------|
-| Apple rejects WebView-only apps | Add native splash screen, proper Info.plist metadata, ensure app provides real utility beyond a website |
-| Google Play flags thin content | Bundle multiple games in catalog app, add offline support via service workers |
-| Code signing expires | Fastlane Match auto-renews; set calendar reminders for annual Apple cert renewal |
-| Game-specific bugs on native | Run automated Playwright tests before publishing; use internal/TestFlight tracks first |
-| Store review delays | Always publish to internal/TestFlight first; only promote to production after validation |
-| Large app size | Games are single HTML files (typically <500KB); Capacitor shell adds ~5-8MB overhead |
-
----
-
-## Appendix: Capacitor Plugin Packages Needed
-
-```json
-{
-  "dependencies": {
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/cli": "^6.0.0",
-    "@capacitor/ios": "^6.0.0",
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/haptics": "^6.0.0",
-    "@capacitor/splash-screen": "^6.0.0",
-    "@capacitor/status-bar": "^6.0.0",
-    "@capacitor/keyboard": "^6.0.0",
-    "@capacitor/screen-orientation": "^6.0.0"
-  }
-}
-```
-
-The `@capacitor/haptics` plugin directly replaces the `window.triggerHaptic` bridge with native iOS/Android haptic engines, providing much richer feedback than the web Vibration API.
+1. Create the game in its own directory with `publish.json`
+2. Add its entry to `mobile/lib/games.ts` (id, title, gradient, category)
+3. Build and deploy the game to CDN: `./mobile/scripts/build-games.sh --game <name> --upload`
+4. The app automatically picks it up — no app store update needed (games load from CDN)
+5. To update the catalog UI, push to main and EAS will rebuild

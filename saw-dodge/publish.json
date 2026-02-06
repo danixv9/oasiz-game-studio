@@ -1,0 +1,10 @@
+{
+  "title": "Saw Dodge",
+  "description": "Dodge deadly saws in this heart-pounding survival game. One hit and you're done.",
+  "category": "action",
+  "gameId": "54wd0-dg30-4011-8000-000000000011",
+  "bundleId": "ai.oasiz.sawdodge",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

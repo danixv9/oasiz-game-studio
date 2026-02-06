@@ -7,20 +7,38 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
+      "ios": {
+        "simulator": true
+      },
       "env": {
-        "GAMES_BASE_URL": "http://localhost:5173"
+        "EXPO_PUBLIC_GAMES_BASE_URL": "http://localhost:5173"
       }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "GAMES_BASE_URL": "https://assets.oasiz.ai"
+        "EXPO_PUBLIC_GAMES_BASE_URL": "https://assets.oasiz.ai"
       }
     },
     "production": {
+      "channel": "production",
       "autoIncrement": true,
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
-        "GAMES_BASE_URL": "https://assets.oasiz.ai"
+        "EXPO_PUBLIC_GAMES_BASE_URL": "https://assets.oasiz.ai"
       }
     }
   },
@@ -33,7 +51,8 @@
       },
       "android": {
         "serviceAccountKeyPath": "./google-play-service-account.json",
-        "track": "internal"
+        "track": "internal",
+        "releaseStatus": "draft"
       }
     }
   }

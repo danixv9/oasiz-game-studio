@@ -1,0 +1,10 @@
+{
+  "title": "Perfect Drop",
+  "description": "Drop with pinpoint accuracy. Precision timing is everything.",
+  "category": "casual",
+  "gameId": "dr0p0-p3rf-4009-8000-000000000009",
+  "bundleId": "ai.oasiz.perfectdrop",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

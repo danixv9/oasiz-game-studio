@@ -1,0 +1,10 @@
+{
+  "title": "Unicycle Hero",
+  "description": "Balance on one wheel through increasingly wild obstacles. Are you the hero?",
+  "category": "physics",
+  "gameId": "un1cy-h3r0-4013-8000-000000000013",
+  "bundleId": "ai.oasiz.unicyclehero",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

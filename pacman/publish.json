@@ -1,0 +1,10 @@
+{
+  "title": "Pac-Man",
+  "description": "The classic maze chase game. Eat all the dots, avoid the ghosts!",
+  "category": "arcade",
+  "gameId": "p4cm4-n000-4006-8000-000000000006",
+  "bundleId": "ai.oasiz.pacman",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

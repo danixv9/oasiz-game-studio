@@ -1,0 +1,10 @@
+{
+  "title": "Block Blast",
+  "description": "Place blocks strategically to clear rows and columns. How long can you survive?",
+  "category": "puzzle",
+  "gameId": "b10c4-b1a5-4001-8000-000000000001",
+  "bundleId": "ai.oasiz.blockblast",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}
