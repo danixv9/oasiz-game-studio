@@ -580,7 +580,7 @@ class AudioManager {
     }
   }
 
-  private playBuffer(buf: AudioBuffer | null, loop = true): void {
+  private playBuffer(buf: AudioBuffer | null, loop = true, speed = 1): void {
     if (!this.ctx || !this.musicGain || !buf) return;
     this.stopMusic();
     // Fade in over 300ms
@@ -588,6 +588,7 @@ class AudioManager {
     this.musicGain.gain.linearRampToValueAtTime(0.4, this.ctx.currentTime + 0.5);
     const s = this.ctx.createBufferSource();
     s.buffer = buf; s.loop = loop;
+    s.playbackRate.value = speed;
     s.connect(this.musicGain); s.start(0);
     this.currentMusicSource = s;
   }
@@ -596,9 +597,15 @@ class AudioManager {
     if (!this.buffersLoaded) { this.pendingMusic = "menu"; return; }
     this.pendingMusic = null; this.playBuffer(this.menuMusicBuffer, true);
   }
-  playGameMusic(): void {
+  playGameMusic(speedMult = 1): void {
     if (!this.buffersLoaded) { this.pendingMusic = "game"; return; }
-    this.pendingMusic = null; this.playBuffer(this.gameMusicBuffer, true);
+    this.pendingMusic = null; this.playBuffer(this.gameMusicBuffer, true, speedMult);
+  }
+
+  setMusicSpeed(speed: number): void {
+    if (this.currentMusicSource) {
+      this.currentMusicSource.playbackRate.value = clamp(speed, 0.8, 1.3);
+    }
   }
   playGameOverMusic(): void {
     if (!this.buffersLoaded) { this.pendingMusic = "gameover"; return; }
@@ -864,6 +871,7 @@ class BlockBlastGame {
   lastPointerTime = 0;
   newHighScoreShown = false;
   gridPulse = 0; // 0-1, triggered on clears
+  timeScale = 1; // For slow-mo effects
 
   // Row/col fill counts (for almost-full indicators)
   rowFill: number[] = new Array(CONFIG.GRID_SIZE).fill(0);
@@ -1024,6 +1032,7 @@ class BlockBlastGame {
 
     this.refillBlockQueue();
     this.updateFillCounts();
+    this.gridPulse = 0.5; // Entrance bounce
 
     document.getElementById("startScreen")?.classList.add("hidden");
     document.getElementById("gameOverScreen")?.classList.add("hidden");
@@ -1234,11 +1243,19 @@ class BlockBlastGame {
           this.shockwaves.emit(cx, cy, this.cellSize * CONFIG.GRID_SIZE * 0.8, "#00eeff", 3);
           this.flash.trigger("#00eeff", 0.12);
           this.audio.playLevelUpSound();
+          // Speed up music slightly with each level
+          this.audio.setMusicSpeed(1 + this.state.difficulty * 0.03);
           triggerHaptic("success");
         }
 
         const cx = this.gridOffsetX + (CONFIG.GRID_SIZE / 2) * this.cellSize;
         const cy = this.gridOffsetY + (CONFIG.GRID_SIZE / 2) * this.cellSize;
+
+        // First clear celebration
+        if (this.state.totalClears === cleared) {
+          this.floatingText.add(cx, cy - 40, "FIRST CLEAR!", "#88ffcc", 26);
+        }
+
         // Score popup at the piece placement location for better spatial feedback
         const placeCx = this.gridOffsetX + (this.ghostPos!.gridX + 0.5) * this.cellSize;
         const placeCy = this.gridOffsetY + (this.ghostPos!.gridY + 0.5) * this.cellSize;
@@ -1492,6 +1509,7 @@ class BlockBlastGame {
 
   endGame(): void {
     this.state.gameOver = true;
+    this.timeScale = 0.2; // Dramatic slow-mo
     this.audio.stopMusic();
     this.audio.playGameOverSound();
     setTimeout(() => this.audio.playGameOverMusic(), 500);
@@ -1571,13 +1589,15 @@ class BlockBlastGame {
     const name = lines === 1 ? "CLEAR" : lines === 2 ? "DOUBLE" : lines === 3 ? "TRIPLE" : "MEGA";
     txt.textContent = streak > 1 ? name + " x" + streak : name;
     const base = this.isMobile ? 2.5 : 3.5;
-    el.style.fontSize = (base + Math.min(lines - 1, 2) * 0.5) + "rem";
+    el.style.fontSize = (base + Math.min(lines - 1, 2) * 0.5 + Math.min(streak - 1, 3) * 0.3) + "rem";
+    // Combo timeout scales with streak to give the player more time to read it
+    const displayTime = 800 + Math.min(streak, 5) * 100;
     el.removeAttribute("data-combo");
     el.classList.remove("active");
     void el.offsetWidth;
     el.classList.add("active");
     clearTimeout(this.comboHideTimeout);
-    this.comboHideTimeout = window.setTimeout(() => this.hideCombo(), 800);
+    this.comboHideTimeout = window.setTimeout(() => this.hideCombo(), displayTime);
   }
 
   hideCombo(): void {
@@ -1620,8 +1640,11 @@ class BlockBlastGame {
 
   // ============= GAME LOOP =============
   gameLoop(ts: number): void {
-    const dt = Math.min((ts - this.lastTime) / 1000, 0.1);
+    const rawDt = Math.min((ts - this.lastTime) / 1000, 0.1);
     this.lastTime = ts;
+    // Recover timeScale
+    if (this.timeScale < 1) this.timeScale = Math.min(1, this.timeScale + rawDt * 0.5);
+    const dt = rawDt * this.timeScale;
     this.gameTime += dt;
     this.update(dt);
     this.render();
@@ -1629,6 +1652,10 @@ class BlockBlastGame {
   }
 
   update(dt: number): void {
+    // Adaptive quality: reduce MAX_PARTICLES on slow devices
+    if (dt > 0.05 && ParticleSystem.MAX_PARTICLES > 150) {
+      ParticleSystem.MAX_PARTICLES = 150; // Halve for low-perf devices
+    }
     this.particles.update(dt);
     this.floatingText.update(dt);
     this.animations.update(dt);
