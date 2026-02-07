@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0c0c20">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="Grid Surge - Premium block puzzle game with stunning visuals, combos, and addictive gameplay.">
     <title>Grid Surge</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
 
@@ -38,6 +43,7 @@
             position: fixed;
             top: 0;
             left: 0;
+            touch-action: none;
         }
 
         /* HUD Overlay */
@@ -863,6 +869,15 @@
             .stat-value {
                 font-size: 1.3rem;
             }
+        }
+        @media (orientation: landscape) and (max-height: 500px) {
+            #hud {
+                padding: max(20px, calc(env(safe-area-inset-top) + 4px)) 12px 4px 12px;
+            }
+            .score-value { font-size: 1.3rem; }
+            .high-score-value { font-size: 1.3rem; }
+            .level-indicator { font-size: 0.6rem; }
+            .level-progress { height: 2px; }
         }
     </style>
 </head>

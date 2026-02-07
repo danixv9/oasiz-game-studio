@@ -325,10 +325,11 @@ class ParticleSystem {
         ctx.fillStyle = p.color;
         ctx.fillRect(-s / 2, -s / 2, s, s);
       } else if (p.type === "confetti") {
-        // Fluttering confetti rectangle
+        // Fluttering confetti rectangle with horizontal drift
         const s = p.size * p.life;
         ctx.fillStyle = p.color;
-        const flutter = Math.sin(p.rotation * 3) * 0.5;
+        const flutter = Math.sin(p.rotation * 3) * s * 0.3;
+        ctx.translate(flutter, 0);
         ctx.scale(1, 0.3 + 0.7 * Math.abs(Math.sin(p.rotation * 2)));
         ctx.fillRect(-s / 2, -s / 4, s, s / 2);
       } else if (p.type === "ember") {
@@ -385,9 +386,9 @@ class FloatingTextSystem {
       ctx.font = `700 ${s}px Fredoka, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      // Text outline for readability
-      ctx.strokeStyle = "rgba(0,0,0,0.5)";
-      ctx.lineWidth = 3;
+      // Text outline for readability (double-stroke for stronger contrast)
+      ctx.strokeStyle = "rgba(0,0,0,0.7)";
+      ctx.lineWidth = 4;
       ctx.lineJoin = "round";
       ctx.strokeText(t.text, t.x, t.y);
       // Glow
@@ -661,7 +662,8 @@ class AudioManager {
       noise.connect(nf); nf.connect(ng); ng.connect(this.sfxGain);
       ng.gain.setValueAtTime(0.08, now);
       ng.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-      noise.start(now);
+      noise.onended = () => { try { noise.disconnect(); nf.disconnect(); ng.disconnect(); } catch {} };
+      noise.start(now); noise.stop(now + 0.2);
     }
   }
 
@@ -858,6 +860,8 @@ class BlockBlastGame {
   private cachedVignette: CanvasGradient | null = null;
   private cachedVigW = 0;
   private cachedVigH = 0;
+  private cachedCellShadow: CanvasGradient | null = null;
+  private cachedCellShadowSize = 0;
 
   // Drag
   draggedPiece: BlockPiece | null = null;
@@ -887,6 +891,7 @@ class BlockBlastGame {
   kbPieceIdx = -1; // Selected queue piece (-1 = none)
   kbGridX = 3; // Cursor position on grid
   kbGridY = 3;
+  kbInvalidFlash = 0; // Brief red flash timer
 
   // Row/col fill counts (for almost-full indicators)
   rowFill: number[] = new Array(CONFIG.GRID_SIZE).fill(0);
@@ -1047,10 +1052,20 @@ class BlockBlastGame {
     this.animations.screenShake = { x: 0, y: 0, intensity: 0 };
     this.shockwaves.waves.length = 0;
     this.flash.alpha = 0;
+    this.kbPieceIdx = -1;
+    this.kbGridX = 3;
+    this.kbGridY = 3;
+    this.timeScale = 1;
 
     this.refillBlockQueue();
     this.updateFillCounts();
     this.gridPulse = 0.5; // Entrance bounce
+    // Game start celebration
+    const gcx = this.gridOffsetX + (CONFIG.GRID_SIZE / 2) * this.cellSize;
+    const gcy = this.gridOffsetY + (CONFIG.GRID_SIZE / 2) * this.cellSize;
+    this.particles.emit(gcx, gcy, "#8B5CF6", 12, "star");
+    this.particles.emit(gcx, gcy, "#EC4899", 8, "burst");
+    this.shockwaves.emit(gcx, gcy, this.cellSize * CONFIG.GRID_SIZE * 0.5, "#8B5CF6", 2);
 
     document.getElementById("startScreen")?.classList.add("hidden");
     document.getElementById("gameOverScreen")?.classList.add("hidden");
@@ -1290,13 +1305,18 @@ class BlockBlastGame {
           this.floatingText.add(cx, cy - 40, "FIRST CLEAR!", "#88ffcc", 26);
         }
 
-        // Score popup at the piece placement location for better spatial feedback
-        const placeCx = this.gridOffsetX + (this.ghostPos!.gridX + 0.5) * this.cellSize;
-        const placeCy = this.gridOffsetY + (this.ghostPos!.gridY + 0.5) * this.cellSize;
+        // Score popup at the piece placement location with random offset to prevent stacking
+        const placeCx = this.gridOffsetX + (this.ghostPos!.gridX + 0.5) * this.cellSize + (Math.random() - 0.5) * 30;
+        const placeCy = this.gridOffsetY + (this.ghostPos!.gridY + 0.5) * this.cellSize + (Math.random() - 0.5) * 20;
         this.showClearType(cleared, this.state.combo);
         const scoreColor = score >= 400 ? "#ffd700" : score >= 200 ? "#ffffff" : "#a0d8ff";
         const scoreSize = score >= 400 ? 34 : score >= 200 ? 28 : 24;
         this.floatingText.add(placeCx, placeCy, "+" + score, scoreColor, scoreSize);
+        // Score trail particles fly upward toward HUD
+        const trailCount = Math.min(5, Math.ceil(score / 150));
+        for (let ti = 0; ti < trailCount; ti++) {
+          setTimeout(() => this.particles.emit(placeCx + (Math.random() - 0.5) * 20, placeCy, scoreColor, 1, "trail"), ti * 40);
+        }
 
         // Show multiplier if significant
         if (streakMul * rapidMul > 1.3) {
@@ -1325,7 +1345,7 @@ class BlockBlastGame {
         // Shockwave
         this.shockwaves.emit(cx, cy, this.cellSize * CONFIG.GRID_SIZE * 0.6, "#ffd700", 2 + cleared);
         this.flash.trigger("#ffffff", 0.08 + cleared * 0.04);
-        triggerHaptic(cleared >= 3 ? "heavy" : "medium");
+        triggerHaptic(cleared >= 3 || this.state.combo >= 3 ? "heavy" : cleared >= 2 ? "medium" : "light");
 
         // Check clears and fill
         const prevFill = this.state.gridFillPct;
@@ -1414,6 +1434,12 @@ class BlockBlastGame {
   }
 
   onKeyDown(e: KeyboardEvent): void {
+    // Allow Enter/Space to start or restart
+    if ((!this.state.started || this.state.gameOver) && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      this.startGame();
+      return;
+    }
     if (!this.state.started || this.state.gameOver) return;
     if (this.draggedPiece) return; // Don't interfere with mouse drag
 
@@ -1461,6 +1487,7 @@ class BlockBlastGame {
           } else {
             this.audio.playInvalidSound();
             triggerHaptic("light");
+            this.kbInvalidFlash = 0.3;
           }
         }
         break;
@@ -1769,6 +1796,7 @@ class BlockBlastGame {
 
     // Grid pulse decay
     if (this.gridPulse > 0) this.gridPulse = Math.max(0, this.gridPulse - dt * 4);
+    if (this.kbInvalidFlash > 0) this.kbInvalidFlash = Math.max(0, this.kbInvalidFlash - dt * 3);
 
     // Smooth score counting
     if (this.displayScore !== this.state.score) {
@@ -1956,12 +1984,18 @@ class BlockBlastGame {
         // Inner shadow for depth (only on empty cells)
         if (this.state.grid[y][x] === null) {
           const inS = this.cellSize - cp * 2;
-          const innerGrad = ctx.createLinearGradient(cx + cp, cy + cp, cx + cp, cy + cp + inS * 0.3);
-          innerGrad.addColorStop(0, "rgba(0,0,0,0.12)");
-          innerGrad.addColorStop(1, "transparent");
-          ctx.fillStyle = innerGrad;
-          this.roundRect(ctx, cx + cp, cy + cp, inS, inS, cr);
+          if (!this.cachedCellShadow || this.cachedCellShadowSize !== inS) {
+            this.cachedCellShadow = ctx.createLinearGradient(0, 0, 0, inS * 0.3);
+            this.cachedCellShadow.addColorStop(0, "rgba(0,0,0,0.12)");
+            this.cachedCellShadow.addColorStop(1, "transparent");
+            this.cachedCellShadowSize = inS;
+          }
+          ctx.save();
+          ctx.translate(cx + cp, cy + cp);
+          ctx.fillStyle = this.cachedCellShadow;
+          this.roundRect(ctx, 0, 0, inS, inS, cr);
           ctx.fill();
+          ctx.restore();
           // Diagonal shimmer
           const shimmerT = (this.gameTime * 0.3 + (x + y) * 0.15) % 1;
           if (shimmerT < 0.15) {
@@ -2017,6 +2051,17 @@ class BlockBlastGame {
             ctx.fill();
             ctx.restore();
           }
+          // Edge glow on blocks in almost-full rows/cols
+          if (rowAlmost || colAlmost) {
+            ctx.save();
+            ctx.globalAlpha = 0.08 + 0.04 * Math.sin(this.gameTime * 3.5);
+            ctx.shadowColor = "#ffd700";
+            ctx.shadowBlur = 6;
+            ctx.fillStyle = "#ffd700";
+            this.roundRect(ctx, cx + cp + 2, cy + cp + 2, this.cellSize - cp * 2 - 4, this.cellSize - cp * 2 - 4, cr);
+            ctx.fill();
+            ctx.restore();
+          }
         }
 
         if (clearSt.clearing && clearSt.progress > 0) ctx.restore();
@@ -2029,8 +2074,12 @@ class BlockBlastGame {
       const ky = this.gridOffsetY + this.kbGridY * this.cellSize;
       const kp = 0.5 + 0.3 * Math.sin(this.gameTime * 4);
       ctx.save();
-      ctx.strokeStyle = `rgba(255,255,255,${kp})`;
-      ctx.lineWidth = 2;
+      const flashR = this.kbInvalidFlash > 0 ? this.kbInvalidFlash / 0.3 : 0;
+      const cursorR = Math.round(255 * (1 - flashR * 0.3));
+      const cursorG = Math.round(255 * (1 - flashR));
+      const cursorB = Math.round(255 * (1 - flashR));
+      ctx.strokeStyle = `rgba(${cursorR},${cursorG},${cursorB},${kp})`;
+      ctx.lineWidth = 2 + flashR * 2;
       this.roundRect(ctx, kx + 1, ky + 1, this.cellSize - 2, this.cellSize - 2, 6);
       ctx.stroke();
       // Ghost preview of the selected piece at cursor position
@@ -2083,6 +2132,7 @@ class BlockBlastGame {
       ctx.fillStyle = "#000000";
       for (const [cx, cy] of this.draggedPiece.cells) {
         const x = gx + cx, y = gy + cy;
+        if (x < 0 || x >= CONFIG.GRID_SIZE || y < 0 || y >= CONFIG.GRID_SIZE) continue;
         const px = this.gridOffsetX + x * this.cellSize;
         const py = this.gridOffsetY + y * this.cellSize;
         this.roundRect(ctx, px + 4, py + 6, this.cellSize - 8, this.cellSize - 6, 6);
@@ -2096,6 +2146,7 @@ class BlockBlastGame {
       ctx.globalAlpha = pulse;
       for (const [cx, cy] of this.draggedPiece.cells) {
         const x = gx + cx, y = gy + cy;
+        if (x < 0 || x >= CONFIG.GRID_SIZE || y < 0 || y >= CONFIG.GRID_SIZE) continue;
         const px = this.gridOffsetX + x * this.cellSize;
         const py = this.gridOffsetY + y * this.cellSize;
         ctx.shadowColor = color.glow;
