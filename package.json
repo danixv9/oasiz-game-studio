@@ -1,0 +1,12 @@
+{
+  "name": "oasiz-game-studio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "bun test tests/"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

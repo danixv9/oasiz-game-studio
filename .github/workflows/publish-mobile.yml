@@ -40,10 +40,26 @@ env:
 
 jobs:
   # ────────────────────────────────────────
+  # Step 0: Run tests before building
+  # ────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Run tests
+        run: bun test tests/
+
+  # ────────────────────────────────────────
   # Step 1: Build all web games
   # ────────────────────────────────────────
   build-games:
     name: Build Web Games
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
