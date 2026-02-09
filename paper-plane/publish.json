@@ -1,0 +1,10 @@
+{
+  "title": "Paper Plane",
+  "description": "Guide your paper plane through the sky. How far can you fly?",
+  "category": "casual",
+  "gameId": "p4p3r-p1an-4008-8000-000000000008",
+  "bundleId": "ai.oasiz.paperplane",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

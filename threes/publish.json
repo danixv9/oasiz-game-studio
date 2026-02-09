@@ -1,0 +1,10 @@
+{
+  "title": "Threes",
+  "description": "Slide numbered tiles to create multiples of three. A zen puzzle experience.",
+  "category": "puzzle",
+  "gameId": "thr33-5000-4012-8000-000000000012",
+  "bundleId": "ai.oasiz.threes",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

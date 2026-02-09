@@ -1,0 +1,10 @@
+{
+  "title": "Police Chase",
+  "description": "Outrun the cops in this endless high-speed chase. How long can you stay free?",
+  "category": "action",
+  "gameId": "p01ic-ch4s-4010-8000-000000000010",
+  "bundleId": "ai.oasiz.policechase",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

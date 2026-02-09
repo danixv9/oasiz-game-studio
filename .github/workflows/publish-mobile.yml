@@ -1,0 +1,184 @@
+name: Build & Publish Mobile App
+
+on:
+  # Auto-publish when games are merged to main
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '*/publish.json'
+      - '*/src/**'
+      - '*/dist/**'
+
+  # Manual trigger for on-demand publishing
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Target platform'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+      profile:
+        description: 'Build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+      auto_submit:
+        description: 'Auto-submit to stores after build'
+        type: boolean
+        default: false
+
+env:
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+jobs:
+  # ────────────────────────────────────────
+  # Step 0: Run tests before building
+  # ────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Run tests
+        run: bun test tests/
+
+  # ────────────────────────────────────────
+  # Step 1: Build all web games
+  # ────────────────────────────────────────
+  build-games:
+    name: Build Web Games
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build all games
+        run: |
+          for game_dir in */; do
+            game_name=$(basename "$game_dir")
+            [ ! -f "$game_dir/publish.json" ] && continue
+            case "$game_name" in mobile|template) continue ;; esac
+
+            echo "::group::Building $game_name"
+            cd "$game_dir"
+            bun install
+            bun run build
+            cd ..
+            echo "::endgroup::"
+          done
+
+      - name: Upload game builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-builds
+          path: '*/dist/index.html'
+          retention-days: 7
+
+  # ────────────────────────────────────────
+  # Step 2: Deploy games to CDN
+  # ────────────────────────────────────────
+  deploy-cdn:
+    name: Deploy Games to CDN
+    needs: build-games
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-builds
+
+      - name: Deploy to CDN
+        run: |
+          for game_dir in */; do
+            game_name=$(basename "$game_dir")
+            [ ! -f "$game_dir/dist/index.html" ] && continue
+            echo "Deploying $game_name to CDN..."
+            # TODO: Replace with your CDN upload command
+            # aws s3 sync "$game_dir/dist/" "s3://oasiz-assets/$game_name/" --delete
+          done
+
+  # ────────────────────────────────────────
+  # Step 3: Build native app with EAS
+  # ────────────────────────────────────────
+  build-mobile:
+    name: Build Mobile App (${{ inputs.platform || 'all' }})
+    needs: deploy-cdn
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: bun install
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build app
+        working-directory: mobile
+        run: |
+          PLATFORM="${{ inputs.platform || 'all' }}"
+          PROFILE="${{ inputs.profile || 'preview' }}"
+
+          echo "Building for $PLATFORM with profile $PROFILE"
+
+          eas build \
+            --platform "$PLATFORM" \
+            --profile "$PROFILE" \
+            --non-interactive \
+            --no-wait
+
+  # ────────────────────────────────────────
+  # Step 4: Submit to stores (optional)
+  # ────────────────────────────────────────
+  submit-stores:
+    name: Submit to Stores
+    needs: build-mobile
+    if: ${{ inputs.auto_submit == true || (github.event_name == 'push' && false) }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [ios, android]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Submit to ${{ matrix.platform }}
+        working-directory: mobile
+        run: |
+          eas submit \
+            --platform ${{ matrix.platform }} \
+            --latest \
+            --non-interactive

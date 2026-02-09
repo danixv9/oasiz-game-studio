@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ────────────────────────────────────────
+  # Run test suite
+  # ────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Run tests
+        run: bun test tests/
+
+  # ────────────────────────────────────────
+  # TypeScript type-checking for mobile app
+  # ────────────────────────────────────────
+  typecheck-mobile:
+    name: Typecheck Mobile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: bun install
+
+      - name: Typecheck
+        working-directory: mobile
+        run: bunx tsc --noEmit
+
+  # ────────────────────────────────────────
+  # Validate all games can build
+  # ────────────────────────────────────────
+  build-games:
+    name: Build Games
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build all published games
+        run: |
+          failed=0
+          for game_dir in */; do
+            game_name=$(basename "$game_dir")
+            [ ! -f "$game_dir/publish.json" ] && continue
+            case "$game_name" in mobile|template) continue ;; esac
+
+            echo "::group::Building $game_name"
+            cd "$game_dir"
+            bun install
+            if bun run build; then
+              echo "✓ $game_name built successfully"
+            else
+              echo "::error::$game_name failed to build"
+              failed=1
+            fi
+            cd ..
+            echo "::endgroup::"
+          done
+
+          if [ "$failed" -eq 1 ]; then
+            echo "::error::One or more games failed to build"
+            exit 1
+          fi
+
+      - name: Verify single-file output
+        run: |
+          for game_dir in */; do
+            game_name=$(basename "$game_dir")
+            [ ! -f "$game_dir/publish.json" ] && continue
+            case "$game_name" in mobile|template) continue ;; esac
+
+            if [ ! -f "$game_dir/dist/index.html" ]; then
+              echo "::error::$game_name did not produce dist/index.html"
+              exit 1
+            fi
+            echo "✓ $game_name: dist/index.html exists"
+          done

@@ -1,0 +1,10 @@
+{
+  "title": "Cannon Blaster",
+  "description": "Aim, fire, and destroy targets with explosive precision.",
+  "category": "arcade",
+  "gameId": "c4nn0n-b1a5-4002-8000-000000000002",
+  "bundleId": "ai.oasiz.cannonblaster",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

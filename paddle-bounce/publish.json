@@ -1,0 +1,10 @@
+{
+  "title": "Paddle Bounce",
+  "description": "Break all the bricks with your bouncing ball. Classic arcade action with a modern twist.",
+  "category": "arcade",
+  "gameId": "p4dd1-b0un-4007-8000-000000000007",
+  "bundleId": "ai.oasiz.paddlebounce",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

@@ -2,10 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, minimal-ui">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0c0c20">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="Grid Surge - Premium block puzzle game with stunning visuals, combos, and addictive gameplay.">
     <title>Grid Surge</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
 
@@ -25,6 +30,10 @@
             touch-action: none;
             user-select: none;
             -webkit-user-select: none;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
         }
 
         canvas {
@@ -34,6 +43,7 @@
             position: fixed;
             top: 0;
             left: 0;
+            touch-action: none;
         }
 
         /* HUD Overlay */
@@ -61,6 +71,7 @@
             border-radius: 20px;
             padding: 18px 32px;
             backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 2px solid rgba(255,255,255,0.15);
             box-shadow: 
                 0 8px 32px rgba(0,0,0,0.4),
@@ -68,6 +79,20 @@
                 0 0 20px rgba(102, 126, 234, 0.2);
             position: relative;
             overflow: hidden;
+        }
+
+        .score-container.multiplier-active {
+            border-color: rgba(255,68,255,0.4);
+            box-shadow:
+                0 8px 32px rgba(0,0,0,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.1),
+                0 0 25px rgba(255,68,255,0.3);
+            animation: scoreMultGlow 1s ease-in-out infinite;
+        }
+
+        @keyframes scoreMultGlow {
+            0%, 100% { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(255,68,255,0.2); }
+            50% { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 35px rgba(255,68,255,0.45); }
         }
 
         .score-container::before {
@@ -99,7 +124,7 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5)) drop-shadow(0 0 10px rgba(100,150,255,0.2));
             line-height: 1;
             transition: transform 0.15s ease;
         }
@@ -109,8 +134,56 @@
         }
 
         @keyframes scoreBump {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+            0% { transform: scale(1); }
+            30% { transform: scale(1.15); }
+            60% { transform: scale(0.95); }
+            100% { transform: scale(1); }
+        }
+
+        .multiplier-badge {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #ff44ff;
+            text-align: center;
+            margin-top: 4px;
+            padding: 2px 10px;
+            background: linear-gradient(135deg, rgba(255,68,255,0.2), rgba(255,100,0,0.15));
+            border-radius: 12px;
+            border: 1px solid rgba(255,68,255,0.4);
+            animation: multPulse 0.8s ease-in-out infinite;
+        }
+
+        .level-indicator {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: rgba(160,200,255,0.7);
+            text-align: center;
+            margin-top: 2px;
+            letter-spacing: 1px;
+        }
+
+        .level-progress {
+            width: 100%;
+            height: 3px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+
+        .level-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        @keyframes multPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(1.05); }
         }
 
         .combo-display {
@@ -131,11 +204,33 @@
 
         .combo-display #comboText {
             display: inline-block;
-            background: linear-gradient(180deg, #ffffff 0%, #ffd700 100%);
+            background: linear-gradient(180deg, #ffffff 0%, #ffd700 50%, #ff8800 100%);
+            background-size: 100% 200%;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4)) drop-shadow(0 0 15px rgba(255,215,0,0.4));
+        }
+
+        .combo-pips {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .combo-pip {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,215,0,0.8);
+            box-shadow: 0 0 6px rgba(255,215,0,0.5);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .combo-pip.used {
+            opacity: 0.2;
+            transform: scale(0.5);
         }
 
         .combo-display.active {
@@ -178,6 +273,8 @@
             background: linear-gradient(145deg, rgba(255,215,0,0.25) 0%, rgba(255,140,0,0.15) 100%);
             border-radius: 20px;
             padding: 18px 32px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 2px solid rgba(255,215,0,0.4);
             box-shadow: 
                 0 8px 32px rgba(0,0,0,0.4),
@@ -232,13 +329,27 @@
             justify-content: center;
             align-items: center;
             background: radial-gradient(ellipse at center, rgba(22, 33, 62, 0.95) 0%, rgba(15, 15, 35, 0.98) 100%);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             z-index: 10;
-            transition: opacity 0.4s ease, visibility 0.4s ease;
+            transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .overlay.hidden {
             opacity: 0;
             visibility: hidden;
+            transform: scale(1.05);
+        }
+
+        #startScreen {
+            background: radial-gradient(ellipse at 30% 30%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
+                        radial-gradient(ellipse at 70% 70%, rgba(118, 75, 162, 0.12) 0%, transparent 50%),
+                        radial-gradient(ellipse at center, rgba(22, 33, 62, 0.88) 0%, rgba(15, 15, 35, 0.92) 100%);
+        }
+
+        #gameOverScreen {
+            background: radial-gradient(ellipse at 50% 40%, rgba(255, 100, 50, 0.08) 0%, transparent 50%),
+                        radial-gradient(ellipse at center, rgba(22, 33, 62, 0.90) 0%, rgba(15, 15, 35, 0.94) 100%);
         }
 
         .content {
@@ -267,11 +378,11 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.3), inset 0 2px 0 rgba(255,255,255,0.3);
         }
 
-        .logo-block:nth-child(1) { background: linear-gradient(135deg, #ff6b6b, #ee5a5a); animation-delay: 0s; }
-        .logo-block:nth-child(2) { background: linear-gradient(135deg, #ffa94d, #ff922b); animation-delay: 0.1s; }
-        .logo-block:nth-child(3) { background: linear-gradient(135deg, #ffd43b, #fab005); animation-delay: 0.2s; }
-        .logo-block:nth-child(4) { background: linear-gradient(135deg, #51cf66, #40c057); animation-delay: 0.3s; }
-        .logo-block:nth-child(5) { background: linear-gradient(135deg, #339af0, #228be6); animation-delay: 0.4s; }
+        .logo-block:nth-child(1) { background: linear-gradient(135deg, #ff6b6b, #ee5a5a); animation-delay: 0s; box-shadow: 0 4px 15px rgba(255,107,107,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
+        .logo-block:nth-child(2) { background: linear-gradient(135deg, #ffa94d, #ff922b); animation-delay: 0.1s; box-shadow: 0 4px 15px rgba(255,169,77,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
+        .logo-block:nth-child(3) { background: linear-gradient(135deg, #ffd43b, #fab005); animation-delay: 0.2s; box-shadow: 0 4px 15px rgba(255,212,59,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
+        .logo-block:nth-child(4) { background: linear-gradient(135deg, #51cf66, #40c057); animation-delay: 0.3s; box-shadow: 0 4px 15px rgba(81,207,102,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
+        .logo-block:nth-child(5) { background: linear-gradient(135deg, #339af0, #228be6); animation-delay: 0.4s; box-shadow: 0 4px 15px rgba(51,154,240,0.4), inset 0 2px 0 rgba(255,255,255,0.3); }
 
         @keyframes logoFloat {
             0%, 100% { transform: translateY(0px) rotate(0deg); }
@@ -294,8 +405,27 @@
         .subtitle {
             font-size: 1.1rem;
             color: rgba(255,255,255,0.5);
-            margin-bottom: 40px;
+            margin-bottom: 20px;
             font-weight: 400;
+        }
+
+        .start-best-score {
+            margin-bottom: 25px;
+            font-family: 'Fredoka', sans-serif;
+        }
+
+        .start-best-label {
+            font-size: 0.75rem;
+            color: rgba(255,215,0,0.6);
+            letter-spacing: 3px;
+            margin-right: 8px;
+        }
+
+        .start-best-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #ffd700;
+            filter: drop-shadow(0 0 6px rgba(255,215,0,0.3));
         }
 
         /* Buttons */
@@ -337,7 +467,19 @@
         }
 
         .btn:active {
-            transform: translateY(-1px);
+            transform: translateY(-1px) scale(0.98);
+        }
+
+        #startButton {
+            animation: btnGlow 2s ease-in-out infinite;
+            font-size: 1.5rem;
+            letter-spacing: 3px;
+            text-shadow: 0 0 12px rgba(255,255,255,0.3);
+        }
+
+        @keyframes btnGlow {
+            0%, 100% { box-shadow: 0 8px 30px rgba(102, 126, 234, 0.4), 0 4px 10px rgba(0,0,0,0.2); }
+            50% { box-shadow: 0 8px 40px rgba(102, 126, 234, 0.6), 0 4px 15px rgba(0,0,0,0.3), 0 0 60px rgba(102, 126, 234, 0.15); }
         }
 
         /* How to Play */
@@ -424,16 +566,20 @@
             font-size: 3rem;
             font-weight: 700;
             margin-bottom: 5px;
-            color: #fff;
             text-transform: uppercase;
             letter-spacing: 6px;
-            text-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            animation: titlePulse 2s ease-in-out infinite;
+            background: linear-gradient(135deg, #ffffff 0%, #ff9999 30%, #ffffff 60%, #ff8888 100%);
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 4px 20px rgba(255,100,100,0.3));
+            animation: titleShift 3s ease-in-out infinite;
         }
 
-        @keyframes titlePulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
+        @keyframes titleShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
         }
 
         .game-over-header {
@@ -462,6 +608,11 @@
         .btn-icon {
             margin-right: 8px;
             vertical-align: middle;
+            transition: transform 0.3s ease;
+        }
+
+        .btn:hover .btn-icon {
+            transform: rotate(-180deg);
         }
 
         .crown-icon {
@@ -575,6 +726,26 @@
         .stat-item:nth-child(2) { animation-delay: 0.2s; }
         .stat-item:nth-child(3) { animation-delay: 0.3s; }
 
+        .stat-item:hover {
+            border-color: rgba(255,255,255,0.2);
+            background: linear-gradient(145deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 100%);
+            transform: translateY(-2px);
+            transition: all 0.2s ease;
+        }
+
+        .stat-item.small {
+            padding: 12px 20px;
+            min-width: 80px;
+        }
+
+        .small-val {
+            font-size: 1.6rem !important;
+        }
+
+        .secondary-stats {
+            margin-top: -15px;
+        }
+
         @keyframes statSlideUp {
             0% {
                 opacity: 0;
@@ -626,29 +797,34 @@
                 gap: 15px;
             }
             #hud {
-                padding: 60px 16px 12px 16px;
+                padding: max(60px, calc(env(safe-area-inset-top) + 12px)) 16px 12px 16px;
             }
             .score-container {
-                padding: 12px 20px;
-                border-radius: 16px;
+                padding: 10px 16px;
+                border-radius: 14px;
             }
             .score-label {
-                font-size: 0.6rem;
+                font-size: 0.55rem;
                 letter-spacing: 2px;
+                margin-bottom: 2px;
             }
             .score-value {
-                font-size: 2rem;
+                font-size: 1.7rem;
             }
             .high-score-container {
-                padding: 12px 20px;
-                border-radius: 16px;
+                padding: 10px 16px;
+                border-radius: 14px;
             }
             .high-score-label {
-                font-size: 0.6rem;
+                font-size: 0.55rem;
                 letter-spacing: 2px;
+                margin-bottom: 2px;
             }
             .high-score-value {
-                font-size: 2rem;
+                font-size: 1.7rem;
+            }
+            .level-indicator {
+                font-size: 0.6rem;
             }
             .combo-display {
                 font-size: 2.5rem;
@@ -667,20 +843,46 @@
                 display: none;
             }
             .content {
-                padding: 20px;
+                padding: 15px;
             }
             h1 {
-                font-size: 2rem;
+                font-size: 1.8rem;
             }
             .logo-block {
-                width: 35px;
-                height: 35px;
+                width: 30px;
+                height: 30px;
             }
+            .subtitle {
+                font-size: 0.85rem;
+                margin-bottom: 15px;
+            }
+            .btn {
+                padding: 12px 40px;
+                font-size: 1rem;
+            }
+            .game-over-title {
+                font-size: 2rem;
+            }
+            .final-score {
+                font-size: 3.5rem;
+            }
+            .stat-value {
+                font-size: 1.3rem;
+            }
+        }
+        @media (orientation: landscape) and (max-height: 500px) {
+            #hud {
+                padding: max(20px, calc(env(safe-area-inset-top) + 4px)) 12px 4px 12px;
+            }
+            .score-value { font-size: 1.3rem; }
+            .high-score-value { font-size: 1.3rem; }
+            .level-indicator { font-size: 0.6rem; }
+            .level-progress { height: 2px; }
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="gameCanvas" role="application" aria-label="Grid Surge block puzzle game board. Use Tab to select pieces, arrow keys to position, Enter to place."></canvas>
     
     <!-- HUD -->
     <div id="hud" style="display: none;">
@@ -688,6 +890,9 @@
             <div class="score-container">
                 <div class="score-label">Score</div>
                 <div class="score-value" id="score">0</div>
+                <div class="multiplier-badge" id="multiplier" style="display:none;">x1.0</div>
+                <div class="level-indicator" id="levelIndicator">Lv.1</div>
+                <div class="level-progress" id="levelProgress"><div class="level-progress-fill" id="levelProgressFill"></div></div>
             </div>
         </div>
         <div class="hud-section" style="align-items: flex-end;">
@@ -701,6 +906,10 @@
     <!-- Combo Display (centered overlay) -->
     <div class="combo-display" id="comboDisplay">
         <span id="comboText">x2 COMBO!</span>
+        <div class="combo-pips" id="comboPips">
+            <span class="combo-pip" id="pip1"></span>
+            <span class="combo-pip" id="pip2"></span>
+        </div>
     </div>
 
     <!-- Start Screen -->
@@ -717,6 +926,10 @@
             </div>
             <h1>GRID SURGE</h1>
             <p class="subtitle">Fill rows and columns to clear them!</p>
+            <div class="start-best-score" id="startBestScore" style="display:none;">
+                <span class="start-best-label">BEST</span>
+                <span class="start-best-value" id="startBestValue">0</span>
+            </div>
             <button class="btn" id="startButton">PLAY</button>
             <div class="how-to-play">
                 <h3>HOW TO PLAY</h3>
@@ -728,7 +941,7 @@
                                 <path d="M7 14l5 7 5-7" fill="none" stroke="currentColor" stroke-width="1.5"/>
                             </svg>
                         </span>
-                        <span>Drag blocks to the grid</span>
+                        <span>Drag & drop blocks</span>
                     </div>
                     <div class="instruction">
                         <span class="instruction-icon icon-clear">
@@ -736,7 +949,7 @@
                                 <path d="M12 2l2.4 7.4h7.6l-6 4.6 2.3 7-6.3-4.6-6.3 4.6 2.3-7-6-4.6h7.6z"/>
                             </svg>
                         </span>
-                        <span>Complete lines to clear</span>
+                        <span>Fill rows or columns</span>
                     </div>
                     <div class="instruction">
                         <span class="instruction-icon icon-combo">
@@ -775,15 +988,25 @@
             <div class="stats-row">
                 <div class="stat-item">
                     <div class="stat-value" id="linesCleared">0</div>
-                    <div class="stat-label">Lines Cleared</div>
+                    <div class="stat-label">Lines</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="blocksPlaced">0</div>
-                    <div class="stat-label">Blocks Placed</div>
+                    <div class="stat-label">Blocks</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="maxCombo">x<span id="maxCombo2">1</span></div>
                     <div class="stat-label">Best Combo</div>
+                </div>
+            </div>
+            <div class="stats-row secondary-stats">
+                <div class="stat-item small">
+                    <div class="stat-value small-val" id="diffReached">1</div>
+                    <div class="stat-label">Level</div>
+                </div>
+                <div class="stat-item small">
+                    <div class="stat-value small-val" id="totalClears">0</div>
+                    <div class="stat-label">Total Clears</div>
                 </div>
             </div>
             <button class="btn" id="restartButton">

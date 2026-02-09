@@ -1,0 +1,10 @@
+{
+  "title": "Dual Block Dodge",
+  "description": "Control two blocks simultaneously. Dodge obstacles in this split-attention challenge.",
+  "category": "action",
+  "gameId": "d0dg3-b10c-4004-8000-000000000004",
+  "bundleId": "ai.oasiz.dualblockdodge",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}

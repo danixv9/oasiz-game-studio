@@ -1,0 +1,10 @@
+{
+  "title": "Wordfall",
+  "description": "Catch falling letters to spell words before time runs out.",
+  "category": "puzzle",
+  "gameId": "w0rdf-a110-4014-8000-000000000014",
+  "bundleId": "ai.oasiz.wordfall",
+  "version": "1.0.0",
+  "ageRating": "4+",
+  "standalone": true
+}
