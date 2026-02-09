@@ -5,6 +5,7 @@ import { describe, it, expect } from 'bun:test';
 import {
   parseBridgeMessage,
   BRIDGE_SCRIPT,
+  createBridgeScript,
   type BridgeMessageType,
   type BridgeMessage,
 } from '../mobile/lib/bridge';
@@ -109,5 +110,47 @@ describe('BRIDGE_SCRIPT', () => {
 
   it('uses ReactNativeWebView.postMessage', () => {
     expect(BRIDGE_SCRIPT).toContain('ReactNativeWebView.postMessage');
+  });
+});
+
+describe('createBridgeScript', () => {
+  it('returns a non-empty string', () => {
+    const script = createBridgeScript();
+    expect(typeof script).toBe('string');
+    expect(script.length).toBeGreaterThan(100);
+  });
+
+  it('injects __OASIZ_SETTINGS__ with defaults when no settings provided', () => {
+    const script = createBridgeScript();
+    expect(script).toContain('window.__OASIZ_SETTINGS__');
+    expect(script).toContain('sound: true');
+    expect(script).toContain('music: true');
+    expect(script).toContain('haptics: true');
+  });
+
+  it('injects custom settings when provided', () => {
+    const script = createBridgeScript({ sound: false, music: false, haptics: true });
+    expect(script).toContain('sound: false');
+    expect(script).toContain('music: false');
+    expect(script).toContain('haptics: true');
+  });
+
+  it('skips haptic postMessage when haptics disabled', () => {
+    const script = createBridgeScript({ haptics: false });
+    expect(script).toContain('haptics: false');
+    expect(script).toContain('if (!window.__OASIZ_SETTINGS__.haptics) return');
+  });
+
+  it('defines all bridge functions', () => {
+    const script = createBridgeScript();
+    expect(script).toContain('window.submitScore');
+    expect(script).toContain('window.triggerHaptic');
+    expect(script).toContain('window.shareRoomCode');
+    expect(script).toContain('window.notifyGameReady');
+    expect(script).toContain('window.notifyGameOver');
+  });
+
+  it('BRIDGE_SCRIPT matches createBridgeScript with defaults', () => {
+    expect(BRIDGE_SCRIPT).toBe(createBridgeScript());
   });
 });

@@ -25,8 +25,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { getGameById, getGameUrl } from '@/lib/games';
-import { BRIDGE_SCRIPT, parseBridgeMessage } from '@/lib/bridge';
-import { saveHighScore, incrementPlayCount } from '@/lib/storage';
+import { createBridgeScript, parseBridgeMessage } from '@/lib/bridge';
+import { saveHighScore, incrementPlayCount, getSettings } from '@/lib/storage';
 import { Colors } from '@/constants/colors';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -47,9 +47,25 @@ export default function GameScreen() {
 
   const [loading, setLoading] = useState(true);
   const [showBackButton, setShowBackButton] = useState(true);
+  const [bridgeScript, setBridgeScript] = useState<string | null>(null);
+  const [hapticsEnabled, setHapticsEnabled] = useState(true);
 
   const backButtonOpacity = useSharedValue(1);
   const backScale = useSharedValue(1);
+
+  // Load settings and create bridge script
+  useEffect(() => {
+    getSettings().then((settings) => {
+      setHapticsEnabled(settings.hapticsEnabled);
+      setBridgeScript(
+        createBridgeScript({
+          sound: settings.soundEnabled,
+          music: settings.musicEnabled,
+          haptics: settings.hapticsEnabled,
+        })
+      );
+    });
+  }, []);
 
   // Track play count
   useEffect(() => {
@@ -71,6 +87,7 @@ export default function GameScreen() {
 
       switch (msg.type) {
         case 'HAPTIC': {
+          if (!hapticsEnabled) break;
           const type = (msg.payload.type as string) || 'medium';
           const hapticFn = HAPTIC_MAP[type];
           if (hapticFn) hapticFn();
@@ -80,7 +97,7 @@ export default function GameScreen() {
           const score = msg.payload.score as number;
           if (typeof score === 'number') {
             const isNewHigh = await saveHighScore(game.id, score);
-            if (isNewHigh) {
+            if (isNewHigh && hapticsEnabled) {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
           }
@@ -107,9 +124,9 @@ export default function GameScreen() {
   );
 
   const handleBack = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
-  }, []);
+  }, [hapticsEnabled]);
 
   const handleBackPressIn = useCallback(() => {
     backScale.value = withSpring(0.85, { damping: 15 });
@@ -145,6 +162,25 @@ export default function GameScreen() {
     );
   }
 
+  // Wait for settings to load before rendering WebView
+  if (!bridgeScript) {
+    return (
+      <View style={styles.container}>
+        <StatusBar hidden />
+        <LinearGradient
+          colors={[game.gradient[0], game.gradient[1]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.loadingGradient}
+        >
+          <Text style={styles.loadingIcon}>{game.icon}</Text>
+          <Text style={styles.loadingTitle}>{game.title}</Text>
+          <ActivityIndicator size="small" color="rgba(255,255,255,0.8)" style={styles.loadingSpinner} />
+        </LinearGradient>
+      </View>
+    );
+  }
+
   const gameUrl = getGameUrl(game);
 
   return (
@@ -156,7 +192,7 @@ export default function GameScreen() {
         ref={webViewRef}
         source={{ uri: gameUrl }}
         style={styles.webview}
-        injectedJavaScriptBeforeContentLoaded={BRIDGE_SCRIPT}
+        injectedJavaScriptBeforeContentLoaded={bridgeScript}
         onMessage={handleMessage}
         onLoadEnd={() => setLoading(false)}
         onTouchStart={handleTouchStart}
