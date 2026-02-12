@@ -1540,13 +1540,15 @@ function setupInputHandlers(): void {
 function resizeCanvas(): void {
   w = gameContainer.clientWidth;
   h = gameContainer.clientHeight;
-  canvas.width = w;
-  canvas.height = h;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // Update block Y position
   blockY = h * CONFIG.BLOCK_Y_POSITION;
-
-  console.log("[resizeCanvas] Canvas resized to: " + w + " x " + h);
 }
 
 // ============= GAME LOOP =============

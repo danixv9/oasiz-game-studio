@@ -406,15 +406,19 @@ class WordfallGame {
 
   resizeCanvas() {
     console.log("[WordfallGame.resizeCanvas]");
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = window.innerWidth * dpr;
+    this.canvas.height = window.innerHeight * dpr;
+    this.canvas.style.width = window.innerWidth + "px";
+    this.canvas.style.height = window.innerHeight + "px";
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.calculateLayout();
     this.createBucketWalls();
   }
 
   calculateLayout() {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     
     // On mobile, we want the bucket to start much higher because the keyboard covers the bottom half.
     // Desktop can stay centered.
@@ -967,7 +971,7 @@ class WordfallGame {
     // Clean up words that fell way below bucket (shouldn't happen but just in case)
     for (let i = this.words.length - 1; i >= 0; i--) {
       const word = this.words[i];
-      if (word.body.position.y > this.canvas.height + 200) {
+      if (word.body.position.y > window.innerHeight + 200) {
         this.removeWord(word);
       }
     }
@@ -992,8 +996,8 @@ class WordfallGame {
   // Rendering
   render() {
     const ctx = this.ctx;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     
     // Clear with gradient background
     const gradient = ctx.createLinearGradient(0, 0, 0, h);

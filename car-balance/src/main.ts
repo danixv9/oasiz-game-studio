@@ -484,9 +484,13 @@ function resetPhysics(): void {
 function resizeCanvas(): void {
   w = window.innerWidth;
   h = window.innerHeight;
-  canvas.width = w;
-  canvas.height = h;
-  
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
   // Calculate layout
   pivotX = w / 2;
   pivotY = h * 0.5;

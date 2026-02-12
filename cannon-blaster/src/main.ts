@@ -1075,11 +1075,13 @@ class CannonBlasterGame {
   resizeCanvas(): void {
     this.w = this.gameContainer.clientWidth;
     this.h = this.gameContainer.clientHeight;
-    this.canvas.width = this.w;
-    this.canvas.height = this.h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = this.w * dpr;
+    this.canvas.height = this.h * dpr;
+    this.canvas.style.width = this.w + "px";
+    this.canvas.style.height = this.h + "px";
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.groundY = this.h - 50;
-
-    console.log("[resizeCanvas]", this.w, "x", this.h);
   }
 
   // Helper to get position relative to game container

@@ -572,14 +572,18 @@ class ThreesGame {
 
   resizeCanvas(): void {
     console.log("[ThreesGame.resizeCanvas]");
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = window.innerWidth * dpr;
+    this.canvas.height = window.innerHeight * dpr;
+    this.canvas.style.width = window.innerWidth + "px";
+    this.canvas.style.height = window.innerHeight + "px";
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.calculateLayout();
   }
 
   calculateLayout(): void {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
 
     // Top safe area for mobile
     const topSafeArea = this.isMobile ? 100 : 80;
@@ -1313,8 +1317,8 @@ class ThreesGame {
 
   render(): void {
     const ctx = this.ctx;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
 
     // Softer cream background
     ctx.fillStyle = "#f5f0e8";

@@ -2998,12 +2998,16 @@ function setupInputHandlers(): void {
 // ============= RESIZE HANDLER =============
 function resizeCanvas(): void {
   const oldH = h; // Save old height for ratio calculation
-  
+
   const rect = screenContainer.getBoundingClientRect();
   w = rect.width;
   h = rect.height;
-  canvas.width = w;
-  canvas.height = h;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   ctx.imageSmoothingEnabled = false;
 

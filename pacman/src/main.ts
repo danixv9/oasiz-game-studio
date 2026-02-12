@@ -358,9 +358,13 @@ class PacmanGame {
     const w = window.innerWidth;
     const h = window.innerHeight;
     
-    this.canvas.width = w;
-    this.canvas.height = h;
-    
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = w * dpr;
+    this.canvas.height = h * dpr;
+    this.canvas.style.width = w + "px";
+    this.canvas.style.height = h + "px";
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
     if (this.isMobile) {
       // Mobile layout: game fills most of screen, HUD above, d-pad below
       const safeAreaTop = 110; // Pushed down even more to clear system buttons

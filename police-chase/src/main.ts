@@ -654,10 +654,13 @@ function resizeCanvas(): void {
     w = window.innerWidth;
     h = window.innerHeight;
   }
-  
-  canvas.width = w;
-  canvas.height = h;
-  console.log("[resizeCanvas] Canvas:", w, "x", h);
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 // ============================================================================
@@ -1894,30 +1897,37 @@ function updateExplosions(dt: number): void {
 
 function updateSkidMarks(dt: number): void {
   // Very slow fade so tracks persist for a long time
-  for (const mark of skidMarks) {
-    mark.alpha -= 0.00015 * dt;
+  let writeIdx = 0;
+  for (let i = 0; i < skidMarks.length; i++) {
+    skidMarks[i].alpha -= 0.00015 * dt;
+    if (skidMarks[i].alpha > 0) skidMarks[writeIdx++] = skidMarks[i];
   }
-  skidMarks = skidMarks.filter((m) => m.alpha > 0);
+  skidMarks.length = writeIdx;
   // Allow many more tracks to persist
   if (skidMarks.length > 3000) skidMarks = skidMarks.slice(-2500);
 }
 
 function updateDriftSmoke(dt: number): void {
   const dtFactor = dt / 16.667;
-  for (const smoke of driftSmoke) {
+  let writeIdx = 0;
+  for (let i = 0; i < driftSmoke.length; i++) {
+    const smoke = driftSmoke[i];
     smoke.x += smoke.vx * dtFactor;
     smoke.y += smoke.vy * dtFactor;
     smoke.size *= 1.025;
     smoke.alpha *= 0.94;
+    if (smoke.alpha > 0.05) driftSmoke[writeIdx++] = smoke;
   }
-  driftSmoke = driftSmoke.filter((s) => s.alpha > 0.05);
+  driftSmoke.length = writeIdx;
 }
 
 function updateScorePopups(dt: number): void {
-  for (const popup of scorePopups) {
-    popup.time += dt;
+  let writeIdx = 0;
+  for (let i = 0; i < scorePopups.length; i++) {
+    scorePopups[i].time += dt;
+    if (scorePopups[i].time < 1200) scorePopups[writeIdx++] = scorePopups[i];
   }
-  scorePopups = scorePopups.filter((p) => p.time < 1200);
+  scorePopups.length = writeIdx;
 }
 
 // ============================================================================
@@ -3147,11 +3157,23 @@ function drawDriftSmoke(): void {
   ctx.globalAlpha = 1;
 }
 
+// Cache vehicle body gradients to avoid recreating per frame per vehicle
+const vehicleGradientCache = new Map<string, { grad: CanvasGradient; w2: number }>();
+
+function getVehicleBodyGradient(c: CanvasRenderingContext2D, vehicle: VehicleType, w2: number): CanvasGradient {
+  const key = `${vehicle.id}_${w2}`;
+  const cached = vehicleGradientCache.get(key);
+  if (cached && cached.w2 === w2) return cached.grad;
+  const grad = c.createLinearGradient(-w2 / 2, 0, w2 / 2, 0);
+  grad.addColorStop(0, vehicle.colors.dark);
+  grad.addColorStop(0.5, vehicle.colors.main);
+  grad.addColorStop(1, vehicle.colors.dark);
+  vehicleGradientCache.set(key, { grad, w2 });
+  return grad;
+}
+
 function drawVehicleShape(c: CanvasRenderingContext2D, vehicle: VehicleType, w2: number, h2: number, isBraking: boolean = false): void {
-  const bodyGrad = c.createLinearGradient(-w2 / 2, 0, w2 / 2, 0);
-  bodyGrad.addColorStop(0, vehicle.colors.dark);
-  bodyGrad.addColorStop(0.5, vehicle.colors.main);
-  bodyGrad.addColorStop(1, vehicle.colors.dark);
+  const bodyGrad = getVehicleBodyGradient(c, vehicle, w2);
   
   if (vehicle.id === "sedan") {
     // Classic sedan shape

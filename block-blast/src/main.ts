@@ -333,14 +333,16 @@ class ParticleSystem {
         ctx.scale(1, 0.3 + 0.7 * Math.abs(Math.sin(p.rotation * 2)));
         ctx.fillRect(-s / 2, -s / 4, s, s / 2);
       } else if (p.type === "ember") {
-        // Glowing ember
+        // Glowing ember - use alpha fade instead of per-particle gradient
         const s = p.size * p.life;
-        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, s);
-        grad.addColorStop(0, p.color);
-        grad.addColorStop(1, "transparent");
-        ctx.fillStyle = grad;
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life * 0.9;
         ctx.beginPath();
         ctx.arc(0, 0, s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = p.life * 0.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2);
         ctx.fill();
       } else {
         ctx.fillStyle = p.color;
@@ -1815,8 +1817,6 @@ class BlockBlastGame {
   render(): void {
     const ctx = this.ctx;
     const w = window.innerWidth, h = window.innerHeight;
-    ctx.clearRect(0, 0, w, h);
-
     // Dynamic background with smooth difficulty transition
     const sd = this.smoothDifficulty;
     const sdRounded = Math.round(sd * 100); // cache key with precision

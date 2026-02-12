@@ -1751,8 +1751,12 @@ class PaperPlaneGame {
   resizeCanvas(): void {
     this.w = this.gameContainer.clientWidth;
     this.h = this.gameContainer.clientHeight;
-    this.canvas.width = this.w;
-    this.canvas.height = this.h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = this.w * dpr;
+    this.canvas.height = this.h * dpr;
+    this.canvas.style.width = this.w + "px";
+    this.canvas.style.height = this.h + "px";
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     if (this.playerX === 0) {
       this.playerX = this.w / 2;
@@ -1760,8 +1764,6 @@ class PaperPlaneGame {
       this.targetX = this.w / 2;
       this.targetY = this.h * CONFIG.PLAYER_Y_RATIO;
     }
-
-    console.log("[resizeCanvas]", this.w, "x", this.h);
   }
 
   // Helper to get position relative to game container

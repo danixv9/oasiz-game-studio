@@ -1154,8 +1154,12 @@ function setupInputHandlers(): void {
 function resizeCanvas(): void {
   w = gameContainer.clientWidth;
   h = gameContainer.clientHeight;
-  canvas.width = w;
-  canvas.height = h;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // Recalculate paddle dimensions
   paddleWidth = w * CONFIG.PADDLE_WIDTH_RATIO;
@@ -1164,8 +1168,6 @@ function resizeCanvas(): void {
   // Clamp paddle position
   paddleX = clamp(paddleX, paddleWidth * 0.25, w - paddleWidth * 0.25);
   paddleTargetX = paddleX;
-
-  console.log("[resizeCanvas] Canvas resized to:", w, "x", h);
 }
 
 // ============= GAME LOOP =============
