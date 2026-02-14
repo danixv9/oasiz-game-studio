@@ -4,9 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "bun test tests/"
+    "test": "bun test tests/",
+    "e2e:install": "node ./node_modules/playwright/cli.js install --with-deps chromium",
+    "e2e": "node ./node_modules/playwright/cli.js test"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.2",
     "typescript": "^5.9.3"
   }
 }

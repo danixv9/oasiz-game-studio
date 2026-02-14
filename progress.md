@@ -129,6 +129,37 @@ Extensive polish of the Block Blast game:
 
 ---
 
+## 2026-02-14 - Agent Work Summary
+
+### Repo maintenance
+
+- Pushed local `main` to `origin/main` after switching the `origin` push URL to SSH (HTTPS push required interactive credentials). (`4adf490..ac1f6a6`)
+- Created branch + local worktree for ongoing work:
+  - Branch: `chore/ci-full-cycle`
+  - Worktree: `C:\\Users\\Charles\\Desktop\\oasiz-game-studio-wt-ci-full-cycle`
+
+### CI hardening (unit → build → e2e)
+
+- Added Playwright-based E2E smoke coverage and made CI deterministic with `bun install --frozen-lockfile`.
+- E2E smoke test locally validated across all published games (15/15 passing) via `bun run e2e`.
+
+Key additions/changes:
+- `.github/workflows/ci.yml` now includes an `e2e-games` job that:
+  - builds all published games,
+  - uploads `*/dist/index.html` as an artifact,
+  - downloads artifacts and runs Playwright smoke tests.
+- `playwright.config.ts` starts a static server (`scripts/ci/serve-root.mjs`) and runs Chromium-only.
+- `e2e/game-load.spec.ts` loads each published game `dist/index.html` and fails on uncaught runtime errors / non-ignored console errors.
+- `prompts.md` created to track user requests verbatim going forward.
+
+Implementation commit (branch): `ae0e910`
+
+### PR
+
+- Opened PR: `https://github.com/danixv9/oasiz-game-studio/pull/3` (branch `chore/ci-full-cycle` → `main`)
+
+---
+
 ## Current State
 
 ### Published Games (14)
