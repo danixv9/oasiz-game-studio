@@ -133,7 +133,7 @@ Extensive polish of the Block Blast game:
 
 ### Repo maintenance
 
-- Pushed local `main` to `origin/main` after switching the `origin` push URL to SSH (HTTPS push required interactive credentials).
+- Pushed local `main` to `origin/main` after switching the `origin` push URL to SSH (HTTPS push required interactive credentials). (`4adf490..ac1f6a6`)
 - Created branch + local worktree for ongoing work:
   - Branch: `chore/ci-full-cycle`
   - Worktree: `C:\\Users\\Charles\\Desktop\\oasiz-game-studio-wt-ci-full-cycle`
@@ -151,6 +151,8 @@ Key additions/changes:
 - `playwright.config.ts` starts a static server (`scripts/ci/serve-root.mjs`) and runs Chromium-only.
 - `e2e/game-load.spec.ts` loads each published game `dist/index.html` and fails on uncaught runtime errors / non-ignored console errors.
 - `prompts.md` created to track user requests verbatim going forward.
+
+Implementation commit (branch): `ae0e910`
 
 ---
 
