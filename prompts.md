@@ -34,3 +34,6 @@ push to origin, then create a branch and worktree locally to work from. ensure y
   months of recent record!
 ```
 
+```text
+open a PR
+```
