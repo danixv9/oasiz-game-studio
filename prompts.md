@@ -37,3 +37,7 @@ push to origin, then create a branch and worktree locally to work from. ensure y
 ```text
 open a PR
 ```
+
+```text
+push to main, ensure vercel picks up the changes
+```

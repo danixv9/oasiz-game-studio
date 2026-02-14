@@ -158,6 +158,12 @@ Implementation commit (branch): `ae0e910`
 
 - Opened PR: `https://github.com/danixv9/oasiz-game-studio/pull/3` (branch `chore/ci-full-cycle` → `main`)
 
+### Merge + Deploy Trigger
+
+- Merged PR #3 into `main` at `f211824` on `2026-02-14T18:22:48Z`.
+- GitHub Actions checks for PR #3 are all green (Unit Tests / Typecheck Mobile / Build Published Games / E2E Games Smoke).
+- Vercel: the repo has no Vercel check runs showing in GitHub, and the local CLI has no credentials (`vercel whoami` fails), so the only reliable action taken here is merging/pushing to `main` (which is what Vercel Git integration watches if configured).
+
 ---
 
 ## Current State
