@@ -95,6 +95,17 @@ bun run dev
 bun run build
 ```
 
+#### Optional: Use Docker (Bun preinstalled)
+
+If you don't want to install Bun locally, you can use the included `Dockerfile` (based on `oven/bun:1`).
+
+PowerShell example:
+```bash
+docker build -t oasiz-bun .
+docker run --rm -it -p 5173:5173 -v ${PWD}:/app -w /app/your-game-name oasiz-bun bun install
+docker run --rm -it -p 5173:5173 -v ${PWD}:/app -w /app/your-game-name oasiz-bun bun run dev -- --host 0.0.0.0
+```
+
 **Recommended games to fork:**
 - `car-balance` - Good for physics-based games
 - `paddle-bounce` - Classic arcade mechanics

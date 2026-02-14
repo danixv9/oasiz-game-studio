@@ -226,6 +226,7 @@ const startScreen = document.getElementById("startScreen")!;
 const gameOverScreen = document.getElementById("gameOverScreen")!;
 const pauseScreen = document.getElementById("pauseScreen")!;
 const pauseBtn = document.getElementById("pauseBtn")!;
+const settingsBtn = document.getElementById("settingsBtn")!;
 const settingsModal = document.getElementById("settingsModal")!;
 const scoreDisplay = document.getElementById("scoreDisplay")!;
 const roundDisplay = document.getElementById("roundDisplay")!;
@@ -292,6 +293,8 @@ let jumpPressed = false;
 
 // Timing
 let gameTime = 0;
+let resumeAfterSettings = false;
+let showPauseAfterSettings = false;
 
 // Settings
 let settings: Settings = {
@@ -1867,6 +1870,7 @@ function gameOver(): void {
   pauseScreen.classList.add("hidden");
   gameOverScreen.classList.remove("hidden");
   pauseBtn.classList.add("hidden");
+  settingsBtn.classList.add("hidden");
 }
 
 function startGame(): void {
@@ -1881,6 +1885,7 @@ function startGame(): void {
   gameOverScreen.classList.add("hidden");
   pauseScreen.classList.add("hidden");
   pauseBtn.classList.remove("hidden");
+  settingsBtn.classList.remove("hidden");
 
   playUIClick();
   triggerHaptic("light");
@@ -1913,9 +1918,48 @@ function showStartScreen(): void {
   gameOverScreen.classList.add("hidden");
   pauseScreen.classList.add("hidden");
   pauseBtn.classList.add("hidden");
+  settingsBtn.classList.add("hidden");
   
   startFallingSaws();
   stopBackgroundMusic();
+}
+
+function openSettings(): void {
+  console.log("[openSettings] Opening settings");
+
+  resumeAfterSettings = gameState === "PLAYING";
+  showPauseAfterSettings = gameState === "PAUSED";
+  gameState = "PAUSED";
+
+  pauseScreen.classList.add("hidden");
+  settingsModal.classList.remove("hidden");
+
+  playUIClick();
+  pauseBackgroundMusic();
+  triggerHaptic("light");
+}
+
+function closeSettings(): void {
+  console.log("[closeSettings] Closing settings");
+
+  settingsModal.classList.add("hidden");
+  playUIClick();
+  triggerHaptic("light");
+
+  if (resumeAfterSettings) {
+    resumeAfterSettings = false;
+    showPauseAfterSettings = false;
+    gameState = "PLAYING";
+    playBackgroundMusic();
+  } else if (showPauseAfterSettings) {
+    resumeAfterSettings = false;
+    showPauseAfterSettings = false;
+    gameState = "PAUSED";
+    pauseScreen.classList.remove("hidden");
+  } else {
+    resumeAfterSettings = false;
+    showPauseAfterSettings = false;
+  }
 }
 
 // ============= INPUT HANDLERS =============
@@ -1940,6 +1984,10 @@ function setupInputHandlers(): void {
       }
     }
     if (e.key === "Escape") {
+      if (!settingsModal.classList.contains("hidden")) {
+        closeSettings();
+        return;
+      }
       if (gameState === "PLAYING") pauseGame();
       else if (gameState === "PAUSED") resumeGame();
     }
@@ -2010,6 +2058,7 @@ function setupInputHandlers(): void {
   // UI buttons
   document.getElementById("startButton")!.addEventListener("click", startGame);
   pauseBtn.addEventListener("click", pauseGame);
+  settingsBtn.addEventListener("click", openSettings);
   document.getElementById("resumeButton")!.addEventListener("click", resumeGame);
   document.getElementById("pauseRestartBtn")!.addEventListener("click", () => {
     pauseScreen.classList.add("hidden");
@@ -2053,11 +2102,7 @@ function setupInputHandlers(): void {
     triggerHaptic("light");
   });
 
-  document.getElementById("settingsClose")!.addEventListener("click", () => {
-    settingsModal.classList.add("hidden");
-    playUIClick();
-    triggerHaptic("light");
-  });
+  document.getElementById("settingsClose")!.addEventListener("click", closeSettings);
 }
 
 // ============= RESIZE HANDLER =============
