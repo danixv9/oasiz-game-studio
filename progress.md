@@ -403,3 +403,10 @@ cd mobile && bun install && bun start
   - `draw-the-thing`: `bun install && bun run build`
   - `unicycle-hero`: `bun install && bun run build`
 - `bun run e2e`: 15/15 passed after builds (initial failures were missing `dist/index.html` for those two games).
+
+## 2026-02-15 - Vercel Deploy (Unicycle Hero)
+
+- Linked local `unicycle-hero/` directory to Vercel project `danixv9s-projects/unicycle-hero` via CLI (created local `.vercel/` and pulled envs to `.env.local` which is ignored).
+- Deployed **production** successfully and updated alias:
+  - Production URL: `https://unicycle-hero-77s3hp1vb-danixv9s-projects.vercel.app`
+  - Alias: `https://unicycle-hero-self.vercel.app`
