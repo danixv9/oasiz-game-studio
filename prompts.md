@@ -55,3 +55,7 @@ check .env
 ```text
 C:\Users\Charles\Desktop\oasiz-game-studio\.env
 ```
+
+```text
+continue where you stopped
+```

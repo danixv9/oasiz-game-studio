@@ -391,3 +391,15 @@ cd block-blast && bun install && bun run build
 # The mobile app (requires Expo CLI + device/emulator)
 cd mobile && bun install && bun start
 ```
+
+---
+
+## 2026-02-15 - Local Verification (Main)
+
+- Verified `VERCEL_TOKEN` works via `vercel whoami` (user: `danixv9`) and listed Vercel projects (includes `unicycle-hero`).
+- `bun test tests/`: 269 passed, 0 failed.
+- Installed root deps (`bun install`) so Playwright CLI is available locally.
+- Built missing published game outputs:
+  - `draw-the-thing`: `bun install && bun run build`
+  - `unicycle-hero`: `bun install && bun run build`
+- `bun run e2e`: 15/15 passed after builds (initial failures were missing `dist/index.html` for those two games).
