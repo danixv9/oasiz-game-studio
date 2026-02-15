@@ -45,3 +45,13 @@ push to main, ensure vercel picks up the changes
 ```text
 create a .env so i can add the vercel token
 ```
+
+## 2026-02-15
+
+```text
+check .env
+```
+
+```text
+C:\Users\Charles\Desktop\oasiz-game-studio\.env
+```

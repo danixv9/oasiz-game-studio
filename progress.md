@@ -168,6 +168,10 @@ Implementation commit (branch): `ae0e910`
 
 - Added root `.env` with `VERCEL_TOKEN=` placeholder for local configuration (file is ignored by `.gitignore`).
 
+### Verification
+
+- Verified `C:\\Users\\Charles\\Desktop\\oasiz-game-studio\\.env` exists and `VERCEL_TOKEN` is set (value redacted).
+
 ---
 
 ## Current State
