@@ -41,3 +41,7 @@ open a PR
 ```text
 push to main, ensure vercel picks up the changes
 ```
+
+```text
+create a .env so i can add the vercel token
+```

@@ -164,6 +164,10 @@ Implementation commit (branch): `ae0e910`
 - GitHub Actions checks for PR #3 are all green (Unit Tests / Typecheck Mobile / Build Published Games / E2E Games Smoke).
 - Vercel: the repo has no Vercel check runs showing in GitHub, and the local CLI has no credentials (`vercel whoami` fails), so the only reliable action taken here is merging/pushing to `main` (which is what Vercel Git integration watches if configured).
 
+### Local Vercel Token
+
+- Added root `.env` with `VERCEL_TOKEN=` placeholder for local configuration (file is ignored by `.gitignore`).
+
 ---
 
 ## Current State
