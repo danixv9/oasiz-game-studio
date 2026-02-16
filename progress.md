@@ -425,6 +425,12 @@ cd mobile && bun install && bun start
 - Added root script `bun run build:published` to build every published game (any top-level dir with `publish.json`).
 - The script runs `bun install` per-game only if needed (or with `--install`), then `bun run build`, and asserts `dist/index.html` exists for each game.
 
+## 2026-02-16 - Assets Hosting Check (Vercel)
+
+- Checked `assets.oasiz.ai`: returns Cloudflare “Not Found” (`404`) and does **not** appear to be served by Vercel in the current account scope.
+- In Vercel scope `danixv9s-projects`, there is a `dist` project, but it currently serves `Unicycle Hero` at `/` and `/<game>/index.html` returns `404`.
+- `vercel domains ls` for `danixv9s-projects` shows **0** domains; `vercel domains inspect assets.oasiz.ai` reports no access under this scope (domain likely lives under a different Vercel team/account).
+
 ---
 
 ## 2026-02-16 - Repo State + Where to Start

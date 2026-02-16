@@ -89,3 +89,7 @@ pick one
 ```text
 can you use fly server or vercel?
 ```
+
+```text
+we already hjave it on vercel. check
+```
