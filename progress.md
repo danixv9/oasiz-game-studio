@@ -420,6 +420,11 @@ cd mobile && bun install && bun start
   - New production deploy: `https://unicycle-hero-hsn9hiyzl-danixv9s-projects.vercel.app`
   - Alias updated: `https://unicycle-hero-self.vercel.app`
 
+## 2026-02-16 - Build Published Games Script
+
+- Added root script `bun run build:published` to build every published game (any top-level dir with `publish.json`).
+- The script runs `bun install` per-game only if needed (or with `--install`), then `bun run build`, and asserts `dist/index.html` exists for each game.
+
 ---
 
 ## 2026-02-16 - Repo State + Where to Start

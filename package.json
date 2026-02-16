@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "bun test tests/",
+    "build:published": "node scripts/build-published.mjs",
+    "build:published:install": "node scripts/build-published.mjs --install --frozen-lockfile",
     "e2e:install": "node ./node_modules/playwright/cli.js install --with-deps chromium",
     "e2e": "node ./node_modules/playwright/cli.js test"
   },
