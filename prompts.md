@@ -63,3 +63,17 @@ continue where you stopped
 ```text
 yes
 ```
+
+```text
+continue
+```
+
+## 2026-02-16
+
+```text
+where did you stop?
+```
+
+```text
+SEE GIT HISTORY o rth emd files for latest work and where to start
+```

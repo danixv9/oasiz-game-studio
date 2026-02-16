@@ -410,3 +410,26 @@ cd mobile && bun install && bun start
 - Deployed **production** successfully and updated alias:
   - Production URL: `https://unicycle-hero-77s3hp1vb-danixv9s-projects.vercel.app`
   - Alias: `https://unicycle-hero-self.vercel.app`
+
+## 2026-02-16 - Vercel Git Integration (Unicycle Hero)
+
+- Connected Vercel project `danixv9s-projects/unicycle-hero` to GitHub repo `danixv9/oasiz-game-studio` (production branch: `main`).
+- Updated Vercel project Root Directory to `unicycle-hero` (so Git-based builds run from the correct subfolder).
+- Verified production alias serves HTML (`200 OK`) and page title is `Unicycle Hero`.
+
+---
+
+## 2026-02-16 - Repo State + Where to Start
+
+- On `main` with local changes to `progress.md` + `prompts.md` (log updates for this request).
+- Most recent commit on `main`: `a8b4808` (2026-02-15) - updates `progress.md` + `prompts.md` only.
+- Most recent non-`main` branches:
+  - `chore/ci-full-cycle`: `e773fe7` (2026-02-14)
+  - `claude/mobile-publishing-plan-7wH7r`: `2fe9511` (2026-02-13)
+  - `claude/document-app-goals-DY1GL`: `1bd0722` (2026-01-29)
+
+### Next logical starting points
+
+1. **CDN deployment (currently a placeholder)**: implement the "Deploy CDN" step in `.github/workflows/publish-mobile.yml` and decide hosting (S3+CloudFront / R2 / etc).
+2. **EAS credentials**: replace placeholders in `mobile/eas.json` and validate `eas build` / `eas submit` flows.
+3. **Product polish backlog**: favorites UI, GAME_OVER session handling, and picking the next unfinished game to finish.
