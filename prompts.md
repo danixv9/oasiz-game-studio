@@ -77,3 +77,7 @@ where did you stop?
 ```text
 SEE GIT HISTORY o rth emd files for latest work and where to start
 ```
+
+```text
+next task
+```
