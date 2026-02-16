@@ -416,6 +416,9 @@ cd mobile && bun install && bun start
 - Connected Vercel project `danixv9s-projects/unicycle-hero` to GitHub repo `danixv9/oasiz-game-studio` (production branch: `main`).
 - Updated Vercel project Root Directory to `unicycle-hero` (so Git-based builds run from the correct subfolder).
 - Verified production alias serves HTML (`200 OK`) and page title is `Unicycle Hero`.
+- Confirmed Git-based production deploy triggered successfully after push:
+  - New production deploy: `https://unicycle-hero-hsn9hiyzl-danixv9s-projects.vercel.app`
+  - Alias updated: `https://unicycle-hero-self.vercel.app`
 
 ---
 
