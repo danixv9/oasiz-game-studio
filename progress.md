@@ -454,3 +454,11 @@ cd mobile && bun install && bun start
 
 - `bun test tests/`: 269 tests across 4 files (0 failing).
 - `bun run e2e`: 15 Playwright smoke tests (currently 1 failing locally: `pacman` timed out at 60s).
+
+## 2026-02-18 - E2E Smoke Stability
+
+- Pushed `6af1918` to `origin/main`.
+- Stabilized Playwright smoke tests by blocking third-party font/audio requests in `e2e/game-load.spec.ts` (reduces network flake).
+- Local verification after the change:
+  - `bun run e2e`: 15/15 passed
+  - `bun test tests/`: 269/269 passed

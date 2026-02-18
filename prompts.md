@@ -89,6 +89,10 @@ commit. how many tests do we have?
 ```
 
 ```text
+yes
+```
+
+```text
 next task
 ```
 

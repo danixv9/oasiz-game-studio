@@ -3,6 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+async function blockThirdPartyAssetsForSmoke(page: import("@playwright/test").Page): Promise<void> {
+  await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
+  await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
+  await page.route("https://assets.oasiz.ai/audio/**", (route) => route.abort());
+}
+
 function shouldIgnoreConsoleError(text: string): boolean {
   const lower = text.toLowerCase();
   if (lower.includes("failed to load resource")) return true;
@@ -36,6 +42,8 @@ test.describe("Published game smoke", () => {
   for (const gameDir of gameDirs) {
     test(`${gameDir} loads without uncaught errors`, async ({ page, baseURL }) => {
       const errors: string[] = [];
+
+      await blockThirdPartyAssetsForSmoke(page);
 
       page.on("pageerror", (err) => {
         errors.push(String(err?.message ?? err));
