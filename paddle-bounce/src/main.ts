@@ -140,6 +140,20 @@ function darkenColor(hex: string, amount: number): string {
 const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 const gameContainer = document.getElementById("game-container")!;
+let dpr = 1;
+
+const backgroundLayer = document.createElement("canvas");
+const backgroundCtx = backgroundLayer.getContext("2d")!;
+const postFxLayer = document.createElement("canvas");
+const postFxCtx = postFxLayer.getContext("2d")!;
+const grainTile = document.createElement("canvas");
+const grainCtx = grainTile.getContext("2d")!;
+const ballCoreSprite = document.createElement("canvas");
+const ballCoreCtx = ballCoreSprite.getContext("2d")!;
+const ballGlowSprite = document.createElement("canvas");
+const ballGlowCtx = ballGlowSprite.getContext("2d")!;
+const coinSprite = document.createElement("canvas");
+const coinCtx = coinSprite.getContext("2d")!;
 
 // UI Elements
 const startScreen = document.getElementById("startScreen")!;
@@ -179,6 +193,10 @@ let ballTrail: { x: number; y: number; alpha: number }[] = [];
 let isFirstBounce = true; // Track if this is the first bounce for spin effect
 let lastHitZone: HitZone = "center-left";
 let centerHitFlash = 0; // Flash effect timer for center hits
+let hitPulseLife = 0;
+let hitPulseX = 0;
+let hitPulseY = 0;
+let hitPulseStrength = 0.75;
 
 // Score
 let score = 0;
@@ -245,12 +263,23 @@ function playHitSound(isCenterHit: boolean): void {
 
 // ============= DRAWING FUNCTIONS =============
 function drawBackground(): void {
-  // Gradient background
-  const gradient = ctx.createLinearGradient(0, 0, 0, h);
-  gradient.addColorStop(0, bgColor);
-  gradient.addColorStop(1, darkenColor(bgColor, 20));
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(backgroundLayer, 0, 0, w, h);
+
+  // Subtle animated grain (pre-generated tile)
+  if (grainTile.width > 0) {
+    const tileSize = grainTile.width / dpr;
+    const t = Date.now() * 0.02;
+    const ox = -((t % tileSize) + tileSize);
+    const oy = -(((t * 0.65) % tileSize) + tileSize);
+    ctx.save();
+    ctx.globalAlpha = 0.05;
+    for (let x = ox; x < w + tileSize; x += tileSize) {
+      for (let y = oy; y < h + tileSize; y += tileSize) {
+        ctx.drawImage(grainTile, x, y, tileSize, tileSize);
+      }
+    }
+    ctx.restore();
+  }
 
   // Center hit flash effect - bright white flash
   if (centerHitFlash > 0) {
@@ -340,44 +369,43 @@ function drawPaddle(): void {
 }
 
 function drawBall(): void {
-  // Draw trail
+  // Draw trail (glow sprite only)
   for (let i = 0; i < ballTrail.length; i++) {
     const t = ballTrail[i];
-    ctx.beginPath();
-    ctx.arc(
-      t.x,
-      t.y,
-      CONFIG.BALL_RADIUS * (0.3 + 0.5 * t.alpha),
-      0,
-      Math.PI * 2,
+    const glowSize = CONFIG.BALL_RADIUS * 4;
+    ctx.save();
+    ctx.globalAlpha = t.alpha * 0.22;
+    ctx.drawImage(
+      ballGlowSprite,
+      t.x - glowSize / 2,
+      t.y - glowSize / 2,
+      glowSize,
+      glowSize,
     );
-    ctx.fillStyle = "rgba(255, 255, 255, " + t.alpha * 0.3 + ")";
-    ctx.fill();
+    ctx.restore();
   }
 
-  // Main ball
-  ctx.beginPath();
-  ctx.arc(ballX, ballY, CONFIG.BALL_RADIUS, 0, Math.PI * 2);
-
-  // Ball gradient (white with highlight)
-  const ballGradient = ctx.createRadialGradient(
-    ballX - CONFIG.BALL_RADIUS * 0.3,
-    ballY - CONFIG.BALL_RADIUS * 0.3,
-    0,
-    ballX,
-    ballY,
-    CONFIG.BALL_RADIUS,
+  // Main glow + ball sprite
+  const glowSize = CONFIG.BALL_RADIUS * 4;
+  ctx.save();
+  ctx.globalAlpha = 0.65;
+  ctx.drawImage(
+    ballGlowSprite,
+    ballX - glowSize / 2,
+    ballY - glowSize / 2,
+    glowSize,
+    glowSize,
   );
-  ballGradient.addColorStop(0, "#ffffff");
-  ballGradient.addColorStop(0.7, "#f0f0f0");
-  ballGradient.addColorStop(1, "#e0e0e0");
-  ctx.fillStyle = ballGradient;
-  ctx.fill();
+  ctx.restore();
 
-  // Thick black border
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = CONFIG.BALL_BORDER_WIDTH;
-  ctx.stroke();
+  const ballSize = CONFIG.BALL_RADIUS * 2;
+  ctx.drawImage(
+    ballCoreSprite,
+    ballX - ballSize / 2,
+    ballY - ballSize / 2,
+    ballSize,
+    ballSize,
+  );
 }
 
 function drawParticles(): void {
@@ -421,6 +449,33 @@ function drawStartScreen(): void {
   }
 }
 
+function drawHitPulse(): void {
+  if (hitPulseLife <= 0) return;
+
+  const total = 220;
+  const t = 1 - hitPulseLife / total;
+  const radius = CONFIG.BALL_RADIUS * (1.2 + t * 2.4);
+  const alpha = (1 - t) * 0.65 * hitPulseStrength;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = accentColor;
+  ctx.shadowColor = accentColor;
+  ctx.shadowBlur = 18;
+  ctx.lineWidth = Math.max(2, 6 * (1 - t));
+  ctx.beginPath();
+  ctx.arc(hitPulseX, hitPulseY, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPostFx(): void {
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.drawImage(postFxLayer, 0, 0, w, h);
+  ctx.restore();
+}
+
 // ============= GAME LOGIC =============
 function resetBall(): void {
   console.log("[resetBall] Resetting ball position");
@@ -455,6 +510,7 @@ function resetGame(): void {
   bgColor = CONFIG.BACKGROUND_COLORS[currentColorIndex].bg;
   accentColor = CONFIG.BACKGROUND_COLORS[currentColorIndex].accent;
   gameContainer.style.background = bgColor;
+  rebuildVisualLayers();
 
   resetBall();
 }
@@ -537,32 +593,11 @@ function drawCoins(): void {
     ctx.scale(scale, scale);
     ctx.globalAlpha = alpha;
 
-    // Hand-drawn style slightly rounded square
-    const r = 8; // Border radius
     const half = size / 2;
 
-    // Outer thick black border
-    ctx.beginPath();
-    ctx.roundRect(-half, -half, size, size, r);
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = CONFIG.COIN_BORDER_WIDTH;
-    ctx.stroke();
-
-    // Gold fill with shiny shades
-    const gradient = ctx.createLinearGradient(-half, -half, half, half);
-    gradient.addColorStop(0, "#FFD700"); // Gold
-    gradient.addColorStop(0.4, "#FFF8DC"); // Cornsilk (shiny highlight)
-    gradient.addColorStop(0.6, "#FFD700"); // Gold
-    gradient.addColorStop(1, "#DAA520"); // Goldenrod (shadow)
-    ctx.fillStyle = gradient;
-    ctx.fill();
-
-    // Inner detail (small rounded square)
-    ctx.beginPath();
-    ctx.roundRect(-half * 0.5, -half * 0.5, half, half, r * 0.5);
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    ctx.shadowColor = accentColor;
+    ctx.shadowBlur = 10;
+    ctx.drawImage(coinSprite, -half, -half, size, size);
 
     ctx.restore();
   }
@@ -607,7 +642,7 @@ function collectCoin(coin: Coin): void {
   console.log("[collectCoin] Coin collected! New score:", score);
 
   // Haptics
-  if (typeof (window as any).triggerHaptic === "function") {
+  if (getOasizSettings().haptics && typeof (window as any).triggerHaptic === "function") {
     (window as any).triggerHaptic("medium");
   }
 
@@ -644,7 +679,7 @@ function handlePaddleHit(): void {
       lastHitZone,
     );
     // Haptic feedback for center hit
-    if (typeof (window as any).triggerHaptic === "function") {
+    if (getOasizSettings().haptics && typeof (window as any).triggerHaptic === "function") {
       (window as any).triggerHaptic("success");
     }
   } else {
@@ -654,7 +689,7 @@ function handlePaddleHit(): void {
       "(no score)",
     );
     // Haptic feedback for non-center hit
-    if (typeof (window as any).triggerHaptic === "function") {
+    if (getOasizSettings().haptics && typeof (window as any).triggerHaptic === "function") {
       (window as any).triggerHaptic("medium");
     }
   }
@@ -862,6 +897,10 @@ function updateBall(): void {
 
     // Spawn particles at the contact point (more for center hits)
     const isCenterZone = zone === "center-left" || zone === "center-right";
+    hitPulseX = ellipseSurfaceX;
+    hitPulseY = ellipseSurfaceY;
+    hitPulseLife = 220;
+    hitPulseStrength = isCenterZone ? 1 : 0.75;
     for (let i = 0; i < particleCount; i++) {
       const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
       const speed = isCenterZone
@@ -1171,12 +1210,188 @@ function setupInputHandlers(): void {
   });
 }
 
+function rebuildBackgroundLayer(): void {
+  backgroundLayer.width = Math.floor(w * dpr);
+  backgroundLayer.height = Math.floor(h * dpr);
+  backgroundCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  backgroundCtx.clearRect(0, 0, w, h);
+
+  const baseGrad = backgroundCtx.createLinearGradient(0, 0, 0, h);
+  baseGrad.addColorStop(0, bgColor);
+  baseGrad.addColorStop(1, darkenColor(bgColor, 26));
+  backgroundCtx.fillStyle = baseGrad;
+  backgroundCtx.fillRect(0, 0, w, h);
+
+  const glow = backgroundCtx.createRadialGradient(
+    w * 0.5,
+    h * 0.12,
+    0,
+    w * 0.5,
+    h * 0.12,
+    Math.max(w, h) * 0.75,
+  );
+  glow.addColorStop(0, accentColor + "55");
+  glow.addColorStop(0.55, accentColor + "18");
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  backgroundCtx.fillStyle = glow;
+  backgroundCtx.fillRect(0, 0, w, h);
+
+  backgroundCtx.save();
+  backgroundCtx.globalAlpha = 0.09;
+  backgroundCtx.strokeStyle = "#000000";
+  backgroundCtx.lineWidth = Math.max(1, Math.min(w, h) * 0.002);
+  const step = Math.max(26, Math.min(62, Math.floor(Math.min(w, h) * 0.07)));
+  for (let x = -h; x < w + h; x += step) {
+    backgroundCtx.beginPath();
+    backgroundCtx.moveTo(x, 0);
+    backgroundCtx.lineTo(x + h, h);
+    backgroundCtx.stroke();
+  }
+  backgroundCtx.restore();
+
+  const grainSize = Math.floor(128 * dpr);
+  grainTile.width = grainSize;
+  grainTile.height = grainSize;
+  grainCtx.setTransform(1, 0, 0, 1, 0, 0);
+  const img = grainCtx.createImageData(grainSize, grainSize);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.floor(Math.random() * 255);
+    img.data[i] = v;
+    img.data[i + 1] = v;
+    img.data[i + 2] = v;
+    img.data[i + 3] = Math.random() < 0.12 ? 22 : 0;
+  }
+  grainCtx.putImageData(img, 0, 0);
+}
+
+function rebuildPostFxLayer(): void {
+  postFxLayer.width = Math.floor(w * dpr);
+  postFxLayer.height = Math.floor(h * dpr);
+  postFxCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  postFxCtx.clearRect(0, 0, w, h);
+
+  postFxCtx.save();
+  postFxCtx.globalAlpha = 0.045;
+  postFxCtx.fillStyle = "#000";
+  for (let y = 0; y < h; y += 4) {
+    postFxCtx.fillRect(0, y, w, 1);
+  }
+  postFxCtx.restore();
+
+  const vg = postFxCtx.createRadialGradient(
+    w * 0.5,
+    h * 0.45,
+    Math.min(w, h) * 0.15,
+    w * 0.5,
+    h * 0.45,
+    Math.max(w, h) * 0.9,
+  );
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(0.7, "rgba(0,0,0,0.18)");
+  vg.addColorStop(1, "rgba(0,0,0,0.35)");
+  postFxCtx.fillStyle = vg;
+  postFxCtx.fillRect(0, 0, w, h);
+
+  const top = postFxCtx.createLinearGradient(0, 0, 0, h * 0.25);
+  top.addColorStop(0, "rgba(255,255,255,0.14)");
+  top.addColorStop(1, "rgba(255,255,255,0)");
+  postFxCtx.fillStyle = top;
+  postFxCtx.fillRect(0, 0, w, h * 0.25);
+}
+
+function rebuildBallSprites(): void {
+  const r = CONFIG.BALL_RADIUS;
+  ballCoreSprite.width = Math.floor(r * 2 * dpr);
+  ballCoreSprite.height = Math.floor(r * 2 * dpr);
+  ballCoreCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ballCoreCtx.clearRect(0, 0, r * 2, r * 2);
+
+  const cx = r;
+  const cy = r;
+
+  const g = ballCoreCtx.createRadialGradient(
+    cx - r * 0.35,
+    cy - r * 0.35,
+    0,
+    cx,
+    cy,
+    r,
+  );
+  g.addColorStop(0, "#ffffff");
+  g.addColorStop(0.65, "#f1f1f1");
+  g.addColorStop(1, "#dfdfdf");
+
+  ballCoreCtx.beginPath();
+  ballCoreCtx.arc(cx, cy, r, 0, Math.PI * 2);
+  ballCoreCtx.fillStyle = g;
+  ballCoreCtx.fill();
+  ballCoreCtx.strokeStyle = "#000";
+  ballCoreCtx.lineWidth = CONFIG.BALL_BORDER_WIDTH;
+  ballCoreCtx.stroke();
+
+  const glowR = r * 2;
+  ballGlowSprite.width = Math.floor(glowR * 2 * dpr);
+  ballGlowSprite.height = Math.floor(glowR * 2 * dpr);
+  ballGlowCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ballGlowCtx.clearRect(0, 0, glowR * 2, glowR * 2);
+
+  const gg = ballGlowCtx.createRadialGradient(glowR, glowR, 0, glowR, glowR, glowR);
+  gg.addColorStop(0, "rgba(255,255,255,0.55)");
+  gg.addColorStop(0.25, "rgba(255,255,255,0.25)");
+  gg.addColorStop(1, "rgba(255,255,255,0)");
+  ballGlowCtx.fillStyle = gg;
+  ballGlowCtx.beginPath();
+  ballGlowCtx.arc(glowR, glowR, glowR, 0, Math.PI * 2);
+  ballGlowCtx.fill();
+}
+
+function rebuildCoinSprite(): void {
+  const size = CONFIG.COIN_SIZE;
+  coinSprite.width = Math.floor(size * dpr);
+  coinSprite.height = Math.floor(size * dpr);
+  coinCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  coinCtx.clearRect(0, 0, size, size);
+
+  const r = 8;
+  coinCtx.beginPath();
+  coinCtx.roundRect(0, 0, size, size, r);
+  coinCtx.strokeStyle = "#000";
+  coinCtx.lineWidth = CONFIG.COIN_BORDER_WIDTH;
+  coinCtx.stroke();
+
+  const gradient = coinCtx.createLinearGradient(0, 0, size, size);
+  gradient.addColorStop(0, "#FFD700");
+  gradient.addColorStop(0.4, "#FFF8DC");
+  gradient.addColorStop(0.6, "#FFD700");
+  gradient.addColorStop(1, "#DAA520");
+  coinCtx.fillStyle = gradient;
+  coinCtx.fill();
+
+  coinCtx.beginPath();
+  coinCtx.roundRect(size * 0.25, size * 0.25, size * 0.5, size * 0.5, r * 0.5);
+  coinCtx.strokeStyle = "rgba(0, 0, 0, 0.22)";
+  coinCtx.lineWidth = 2;
+  coinCtx.stroke();
+}
+
+function rebuildVisualLayers(): void {
+  rebuildBackgroundLayer();
+  rebuildPostFxLayer();
+  rebuildBallSprites();
+  rebuildCoinSprite();
+}
+
 // ============= RESIZE HANDLER =============
 function resizeCanvas(): void {
   w = gameContainer.clientWidth;
   h = gameContainer.clientHeight;
-  canvas.width = w;
-  canvas.height = h;
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
 
   // Recalculate paddle dimensions
   paddleWidth = w * CONFIG.PADDLE_WIDTH_RATIO;
@@ -1186,6 +1401,7 @@ function resizeCanvas(): void {
   paddleX = clamp(paddleX, paddleWidth * 0.25, w - paddleWidth * 0.25);
   paddleTargetX = paddleX;
 
+  rebuildVisualLayers();
   console.log("[resizeCanvas] Canvas resized to:", w, "x", h);
 }
 
@@ -1211,10 +1427,16 @@ function gameLoop(timestamp: number): void {
       if (centerHitFlash < 0) centerHitFlash = 0;
     }
 
+    if (hitPulseLife > 0) {
+      hitPulseLife -= dt;
+      if (hitPulseLife < 0) hitPulseLife = 0;
+    }
+
     drawScore();
     drawPaddle();
     drawCoins();
     drawBall();
+    drawHitPulse();
     drawParticles();
   } else if (gameState === "START") {
     drawStartScreen();
@@ -1226,9 +1448,11 @@ function gameLoop(timestamp: number): void {
     drawPaddle();
     drawCoins();
     drawBall();
+    drawHitPulse();
     drawParticles();
   }
 
+  drawPostFx();
   requestAnimationFrame(gameLoop);
 }
 
