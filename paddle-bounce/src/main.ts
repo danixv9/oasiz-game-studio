@@ -104,6 +104,21 @@ interface Settings {
   sound: boolean;
 }
 
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 // ============= UTILITY FUNCTIONS =============
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -214,7 +229,7 @@ const hitSynth = new Tone.Synth({
 }).toDestination();
 
 function playHitSound(isCenterHit: boolean): void {
-  if (!settings.sound) return;
+  if (!settings.sound || !getOasizSettings().fx) return;
   if (Tone.getContext().state !== "running") {
     Tone.start();
   }
@@ -973,7 +988,9 @@ function startGame(): void {
   // Handle background music and Tone.js start
   if (settings.sound) {
     Tone.start();
-    bgMusic.play().catch((e) => console.log("[startGame] Audio play failed:", e));
+    if (getOasizSettings().music) {
+      bgMusic.play().catch((e) => console.log("[startGame] Audio play failed:", e));
+    }
   }
 
   resetGame();
@@ -1004,7 +1021,7 @@ function resumeGame(): void {
   pauseScreen.classList.add("hidden");
 
   // Resume music on resume
-  if (settings.sound) {
+  if (settings.sound && getOasizSettings().music) {
     bgMusic.play().catch((e) => console.log("[resumeGame] Audio play failed:", e));
   }
 }
@@ -1014,7 +1031,7 @@ function showStartScreen(): void {
   gameState = "START";
 
   // Handle background music
-  if (settings.sound) {
+  if (settings.sound && getOasizSettings().music) {
     bgMusic.play().catch((e) => console.log("[showStartScreen] Audio play failed:", e));
   }
 
@@ -1143,7 +1160,11 @@ function setupInputHandlers(): void {
 
     if (settings.sound) {
       Tone.start();
-      bgMusic.play().catch((e) => console.log("[soundToggle] Audio play failed:", e));
+      if (getOasizSettings().music) {
+        bgMusic.play().catch((e) => console.log("[soundToggle] Audio play failed:", e));
+      } else {
+        bgMusic.pause();
+      }
     } else {
       bgMusic.pause();
     }

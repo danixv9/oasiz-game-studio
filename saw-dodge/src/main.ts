@@ -216,6 +216,21 @@ interface Settings {
   haptics: boolean;
 }
 
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 // ============= GLOBALS =============
 const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -350,7 +365,7 @@ function initAudio(): void {
 }
 
 function playBackgroundMusic(): void {
-  if (!settings.music || !bgMusic) return;
+  if (!settings.music || !getOasizSettings().music || !bgMusic) return;
   
   bgMusic.play().catch((e) => {
     console.log("[playBackgroundMusic] Autoplay blocked, will play on interaction:", e);
@@ -376,7 +391,7 @@ function stopBackgroundMusic(): void {
 function updateMusicState(): void {
   if (!bgMusic) return;
   
-  if (settings.music && gameState === "PLAYING") {
+  if (settings.music && getOasizSettings().music && gameState === "PLAYING") {
     if (bgMusic.paused) {
       bgMusic.play().catch(() => {});
     }
@@ -386,7 +401,7 @@ function updateMusicState(): void {
 }
 
 function playJumpSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") audioContext.resume();
 
   const osc = audioContext.createOscillator();
@@ -406,7 +421,7 @@ function playJumpSound(): void {
 }
 
 function playLandSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") audioContext.resume();
 
   const osc = audioContext.createOscillator();
@@ -426,7 +441,7 @@ function playLandSound(): void {
 }
 
 function playExplosionSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") audioContext.resume();
 
   // Two-tone explosion for more impact
@@ -456,7 +471,7 @@ function playExplosionSound(): void {
 }
 
 function playCoinSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") audioContext.resume();
 
   const osc = audioContext.createOscillator();
@@ -476,7 +491,7 @@ function playCoinSound(): void {
 }
 
 function playDeathSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") audioContext.resume();
 
   // Descending sad tone
@@ -497,7 +512,7 @@ function playDeathSound(): void {
 }
 
 function playRoundSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") audioContext.resume();
 
   // Triumphant fanfare
@@ -517,7 +532,7 @@ function playRoundSound(): void {
 }
 
 function playUIClick(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") audioContext.resume();
 
   const osc = audioContext.createOscillator();
@@ -537,7 +552,7 @@ function playUIClick(): void {
 
 // ============= HAPTICS =============
 function triggerHaptic(type: string): void {
-  if (!settings.haptics) return;
+  if (!settings.haptics || !getOasizSettings().haptics) return;
   if (typeof (window as any).triggerHaptic === "function") {
     (window as any).triggerHaptic(type);
   }
@@ -1452,7 +1467,7 @@ function spawnDoubleJumpBurst(x: number, y: number): void {
 }
 
 function playDoubleJumpSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") audioContext.resume();
 
   // Magical ascending whoosh sound

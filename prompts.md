@@ -101,6 +101,14 @@ ui/ux and game engine improvements
 ```
 
 ```text
+ok
+```
+
+```text
+YES
+```
+
+```text
 next task
 ```
 

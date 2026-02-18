@@ -25,6 +25,21 @@ interface Settings {
   haptics: boolean;
 }
 
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 // SVG icons for lobby
 const USER_ICON = `<svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
 const CROWN_ICON = `<svg viewBox="0 0 24 24"><path d="M5 16L3 6l5.5 4L12 4l3.5 6L21 6l-2 10H5z"/></svg>`;
@@ -42,6 +57,7 @@ export class GameManager {
   private gamePhase: GamePhase = "lobby";
   private settings: Settings;
   private hostId: string = "";
+  private platformSettings = getOasizSettings();
 
   // Background music
   private bgMusic: HTMLAudioElement;
@@ -76,6 +92,7 @@ export class GameManager {
 
     // Load settings from localStorage
     this.settings = this.loadSettings();
+    this.platformSettings = getOasizSettings();
 
     // Initialize background music
     this.bgMusic = new Audio(
@@ -312,7 +329,7 @@ export class GameManager {
         this.triggerHaptic("light");
 
         // Play or pause music
-        if (this.settings.music && this.gamePhase === "playing") {
+        if (this.settings.music && this.platformSettings.music && this.gamePhase === "playing") {
           this.bgMusic
             .play()
             .catch((e) => console.log("[GameManager] Audio play failed:", e));
@@ -589,7 +606,7 @@ export class GameManager {
     this.roundEndOverlay.classList.remove("active");
 
     // Start background music if enabled
-    if (this.settings.music) {
+    if (this.settings.music && this.platformSettings.music) {
       this.bgMusic
         .play()
         .catch((e) => console.log("[GameManager] Audio play failed:", e));
@@ -923,6 +940,7 @@ export class GameManager {
   ): void {
     if (
       this.settings.haptics &&
+      this.platformSettings.haptics &&
       typeof (window as any).triggerHaptic === "function"
     ) {
       (window as any).triggerHaptic(type);
@@ -937,13 +955,13 @@ export class GameManager {
   }
 
   public async playGuessSound(): Promise<void> {
-    if (!this.settings.fx) return;
+    if (!this.settings.fx || !this.platformSettings.fx) return;
     await this.ensureToneStarted();
     this.guessSynth.triggerAttackRelease("C5", "16n");
   }
 
   public async playCorrectSound(): Promise<void> {
-    if (!this.settings.fx) return;
+    if (!this.settings.fx || !this.platformSettings.fx) return;
     await this.ensureToneStarted();
     // Cheerful ascending arpeggio
     const now = Tone.now();
@@ -954,13 +972,13 @@ export class GameManager {
   }
 
   public async playWrongSound(): Promise<void> {
-    if (!this.settings.fx) return;
+    if (!this.settings.fx || !this.platformSettings.fx) return;
     await this.ensureToneStarted();
     this.wrongSynth.triggerAttackRelease("E3", "8n");
   }
 
   public async playWinSound(): Promise<void> {
-    if (!this.settings.fx) return;
+    if (!this.settings.fx || !this.platformSettings.fx) return;
     await this.ensureToneStarted();
     // Triumphant fanfare
     const now = Tone.now();
@@ -970,7 +988,7 @@ export class GameManager {
   }
 
   public async playLoseSound(): Promise<void> {
-    if (!this.settings.fx) return;
+    if (!this.settings.fx || !this.platformSettings.fx) return;
     await this.ensureToneStarted();
     // Sad descending notes
     const now = Tone.now();
@@ -980,7 +998,7 @@ export class GameManager {
   }
 
   public async playDrawSound(): Promise<void> {
-    if (!this.settings.fx) return;
+    if (!this.settings.fx || !this.platformSettings.fx) return;
     await this.ensureToneStarted();
     // Soft brush sound - random pitch for variety
     const notes = ["C4", "D4", "E4", "F4", "G4"];

@@ -473,3 +473,12 @@ cd mobile && bun install && bun start
   - `bun test tests/`: 270/270 passed
   - `cd mobile && bun x tsc --noEmit`: OK
   - Note: `bun run e2e` is intermittently flaky at 60s test timeout (rerun of the failed game usually passes).
+
+## 2026-02-18 - Game Audio Respects Platform Settings
+
+- Updated games that play music/SFX to respect the injected global settings (`window.__OASIZ_SETTINGS__`) so mobile Settings actually mutes music/FX/haptics:
+  - `cannon-blaster`, `dual-block-dodge`, `pacman`, `paddle-bounce`, `draw-the-thing`, `car-balance`, `saw-dodge`, `police-chase`
+- Rebuilt updated games (ran `bun run build` inside each game folder).
+- Verification:
+  - `bun test tests/`: 270/270 passed
+  - `bun run e2e`: 15/15 passed

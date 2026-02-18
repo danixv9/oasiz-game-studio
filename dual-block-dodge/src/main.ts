@@ -120,6 +120,21 @@ interface Settings {
   haptics: boolean;
 }
 
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 interface TouchState {
   leftActive: boolean;
   rightActive: boolean;
@@ -234,7 +249,7 @@ function initAudio(): void {
 }
 
 function playCheckpointSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") {
     audioContext.resume();
   }
@@ -260,7 +275,7 @@ function playCheckpointSound(): void {
 }
 
 function playCrashSound(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") {
     audioContext.resume();
   }
@@ -283,7 +298,7 @@ function playCrashSound(): void {
 }
 
 function playUIClick(): void {
-  if (!settings.fx || !audioContext) return;
+  if (!settings.fx || !getOasizSettings().fx || !audioContext) return;
   if (audioContext.state === "suspended") {
     audioContext.resume();
   }
@@ -306,7 +321,7 @@ function playUIClick(): void {
 
 // ============= HAPTICS =============
 function triggerHaptic(type: string): void {
-  if (!settings.haptics) return;
+  if (!settings.haptics || !getOasizSettings().haptics) return;
   if (typeof (window as any).triggerHaptic === "function") {
     (window as any).triggerHaptic(type);
   }
@@ -1297,7 +1312,7 @@ function startGame(): void {
   resetGame();
 
   // Play music if enabled
-  if (settings.music) {
+  if (settings.music && getOasizSettings().music) {
     bgMusic.play().catch(e => console.log("[startGame] Audio play failed:", e));
   }
 
@@ -1332,7 +1347,7 @@ function resumeGame(): void {
   pauseScreen.classList.add("hidden");
   
   // Resume music if enabled
-  if (settings.music) {
+  if (settings.music && getOasizSettings().music) {
     bgMusic.play().catch(e => console.log("[resumeGame] Audio play failed:", e));
   }
   
@@ -1509,7 +1524,7 @@ function setupInputHandlers(): void {
     musicToggle.classList.toggle("active", settings.music);
     localStorage.setItem("dualBlockDodge_music", settings.music.toString());
     
-    if (settings.music && gameState === "PLAYING") {
+    if (settings.music && getOasizSettings().music && gameState === "PLAYING") {
       bgMusic.play().catch(e => console.log("[musicToggle] Audio play failed:", e));
     } else {
       bgMusic.pause();

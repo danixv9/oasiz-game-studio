@@ -177,6 +177,21 @@ interface Settings {
   haptics: boolean;
 }
 
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 type BiomeType = "desert" | "forest" | "snow" | "city" | "beach" | "volcanic";
 type GamePhase = "start" | "playing" | "gameOver";
 type InputState = { up: boolean; down: boolean; left: boolean; right: boolean };
@@ -455,7 +470,7 @@ function initMusic(): void {
 }
 
 function playMusic(): void {
-  if (!bgMusic || !settings.music) return;
+  if (!bgMusic || !settings.music || !getOasizSettings().music) return;
   
   bgMusic.play().catch((e) => {
     console.log("[playMusic] Autoplay blocked, will play on interaction:", e);
@@ -535,7 +550,7 @@ function initExplosionSound(): void {
 }
 
 function playExplosionSound(): void {
-  if (!settings.fx) return;
+  if (!settings.fx || !getOasizSettings().fx) return;
   
   const triggerExplosion = (): void => {
     if (!impactSynth || !crackleNoise || !rumbleSynth) return;
@@ -1193,7 +1208,7 @@ function setupUIHandlers(): void {
 // ============================================================================
 
 function triggerHaptic(type: "light" | "medium" | "heavy" | "success" | "error"): void {
-  if (!settings.haptics) return;
+  if (!settings.haptics || !getOasizSettings().haptics) return;
   if (typeof (window as any).triggerHaptic === "function") {
     (window as any).triggerHaptic(type);
   }
@@ -1828,7 +1843,7 @@ function createExplosion(x: number, y: number): void {
   playExplosionSound();
   
   // Trigger haptic feedback
-  if (settings.haptics && typeof (window as any).triggerHaptic === "function") {
+  if (settings.haptics && getOasizSettings().haptics && typeof (window as any).triggerHaptic === "function") {
     (window as any).triggerHaptic("heavy");
   }
   

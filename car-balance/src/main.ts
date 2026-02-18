@@ -37,6 +37,21 @@ interface CarStyle {
   wheelScale: number;   // 0.7 to 1.3
 }
 
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 // Available car styles (6 options)
 const CAR_STYLES: CarStyle[] = [
   {
@@ -704,9 +719,11 @@ function startGame(): void {
   gameTime = 0;
   
   // Start theme music
-  if (themeMusic) {
+  if (themeMusic && getOasizSettings().music) {
     themeMusic.currentTime = 0;
     themeMusic.play().catch(() => {});
+  } else if (themeMusic) {
+    themeMusic.pause();
   }
   // Stop game over music if playing
   if (gameOverMusic) {
@@ -755,6 +772,7 @@ function restartGame(): void {
 }
 
 function playSplashSound(): void {
+  if (!getOasizSettings().fx) return;
   try {
     // Create audio context if needed
     if (!audioContext) {
@@ -821,9 +839,11 @@ function endGame(): void {
   
   // Play game over music after a short delay
   setTimeout(() => {
-    if (gameOverMusic) {
+    if (gameOverMusic && getOasizSettings().music) {
       gameOverMusic.currentTime = 0;
       gameOverMusic.play().catch(() => {});
+    } else if (gameOverMusic) {
+      gameOverMusic.pause();
     }
   }, 500);
   

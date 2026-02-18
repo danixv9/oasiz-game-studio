@@ -128,6 +128,21 @@ function directionToVector(dir: Direction): Position {
   return vectors[dir];
 }
 
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 // ============= SOUND MANAGER =============
 class SoundManager {
   private sounds: Map<string, HTMLAudioElement> = new Map();
@@ -157,7 +172,7 @@ class SoundManager {
   }
   
   play(name: string): void {
-    if (this.muted) return;
+    if (this.muted || !getOasizSettings().fx) return;
     const sound = this.sounds.get(name);
     if (sound) {
       sound.currentTime = 0;
@@ -168,7 +183,8 @@ class SoundManager {
   
   playMusic(name: string, loop: boolean = true): void {
     if (this.musicPlaying === name) return;
-    
+    if (!getOasizSettings().music) return;
+     
     // Stop current music
     this.stopMusic();
     
@@ -195,7 +211,7 @@ class SoundManager {
   
   // Play the waka sound with proper timing (original arcade plays it on each pellet)
   playWaka(): void {
-    if (this.muted) return;
+    if (this.muted || !getOasizSettings().fx) return;
     const sound = this.sounds.get("waka");
     if (sound) {
       // Only play if not already playing (prevent overlap spam)

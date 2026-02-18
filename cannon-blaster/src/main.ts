@@ -112,6 +112,21 @@ interface Settings {
   haptics: boolean;
 }
 
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 // ============= UTILITY FUNCTIONS =============
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -237,7 +252,7 @@ class AudioManager {
   }
 
   playMusic(): void {
-    if (!this.music || !this.settings.music) return;
+    if (!this.music || !this.settings.music || !getOasizSettings().music) return;
     this.music.play().catch(e => console.warn("[AudioManager.playMusic] Failed:", e));
   }
 
@@ -259,7 +274,7 @@ class AudioManager {
   }
 
   playShoot(): void {
-    if (!this.ctx || !this.sfxGain || !this.settings.fx) return;
+    if (!this.ctx || !this.sfxGain || !this.settings.fx || !getOasizSettings().fx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -275,7 +290,7 @@ class AudioManager {
   }
 
   playHit(): void {
-    if (!this.ctx || !this.sfxGain || !this.settings.fx) return;
+    if (!this.ctx || !this.sfxGain || !this.settings.fx || !getOasizSettings().fx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -291,7 +306,7 @@ class AudioManager {
   }
 
   playDestroy(size: BoulderSize): void {
-    if (!this.ctx || !this.sfxGain || !this.settings.fx) return;
+    if (!this.ctx || !this.sfxGain || !this.settings.fx || !getOasizSettings().fx) return;
     const now = this.ctx.currentTime;
     const baseFreq = size === "large" ? 60 : size === "medium" ? 100 : 180;
 
@@ -322,7 +337,7 @@ class AudioManager {
   }
 
   playUpgrade(): void {
-    if (!this.ctx || !this.sfxGain || !this.settings.fx) return;
+    if (!this.ctx || !this.sfxGain || !this.settings.fx || !getOasizSettings().fx) return;
     const now = this.ctx.currentTime;
     const notes = [392, 523, 659, 784];
     notes.forEach((freq, i) => {
@@ -340,7 +355,7 @@ class AudioManager {
   }
 
   playGameOver(): void {
-    if (!this.ctx || !this.sfxGain || !this.settings.fx) return;
+    if (!this.ctx || !this.sfxGain || !this.settings.fx || !getOasizSettings().fx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -364,7 +379,7 @@ class AudioManager {
   }
 
   triggerHaptic(type: string): void {
-    if (!this.settings.haptics) return;
+    if (!this.settings.haptics || !getOasizSettings().haptics) return;
     if (
       typeof (window as unknown as { triggerHaptic: (t: string) => void })
         .triggerHaptic === "function"
