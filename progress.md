@@ -447,3 +447,10 @@ cd mobile && bun install && bun start
 1. **CDN deployment (currently a placeholder)**: implement the "Deploy CDN" step in `.github/workflows/publish-mobile.yml` and decide hosting (S3+CloudFront / R2 / etc).
 2. **EAS credentials**: replace placeholders in `mobile/eas.json` and validate `eas build` / `eas submit` flows.
 3. **Product polish backlog**: favorites UI, GAME_OVER session handling, and picking the next unfinished game to finish.
+
+---
+
+## 2026-02-18 - Test Counts
+
+- `bun test tests/`: 269 tests across 4 files (0 failing).
+- `bun run e2e`: 15 Playwright smoke tests (currently 1 failing locally: `pacman` timed out at 60s).

@@ -78,6 +78,16 @@ where did you stop?
 SEE GIT HISTORY o rth emd files for latest work and where to start
 ```
 
+## 2026-02-18
+
+```text
+update?
+```
+
+```text
+commit. how many tests do we have?
+```
+
 ```text
 next task
 ```
