@@ -242,6 +242,11 @@ class PacmanGame {
   private ctx: CanvasRenderingContext2D;
   private isMobile: boolean;
   private soundManager: SoundManager;
+  private viewW: number = 0;
+  private viewH: number = 0;
+  private dpr: number = 1;
+  private mazeLayer: HTMLCanvasElement;
+  private mazeLayerCtx: CanvasRenderingContext2D;
   
   // Layout
   private scale: number = 1;
@@ -313,6 +318,8 @@ class PacmanGame {
     this.ctx = this.canvas.getContext("2d")!;
     this.isMobile = window.matchMedia("(pointer: coarse)").matches;
     this.soundManager = new SoundManager();
+    this.mazeLayer = document.createElement("canvas");
+    this.mazeLayerCtx = this.mazeLayer.getContext("2d")!;
     
     // Get UI elements
     this.hudElement = document.getElementById("hud")!;
@@ -374,8 +381,7 @@ class PacmanGame {
     const w = window.innerWidth;
     const h = window.innerHeight;
     
-    this.canvas.width = w;
-    this.canvas.height = h;
+    this.configureCanvas(w, h);
     
     if (this.isMobile) {
       // Mobile layout: game fills most of screen, HUD above, d-pad below
@@ -449,7 +455,120 @@ class PacmanGame {
       this.livesDisplay.style.bottom = "10px";
     }
     
+    this.rebuildMazeLayer();
     console.log("[calculateLayout] Scale:", this.scale, "Offset:", this.offsetX, this.offsetY);
+  }
+
+  private configureCanvas(w: number, h: number): void {
+    this.viewW = w;
+    this.viewH = h;
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+
+    this.canvas.style.width = w + "px";
+    this.canvas.style.height = h + "px";
+    this.canvas.width = Math.floor(w * this.dpr);
+    this.canvas.height = Math.floor(h * this.dpr);
+
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.ctx.imageSmoothingEnabled = false;
+  }
+
+  private rebuildMazeLayer(): void {
+    this.mazeLayer.width = Math.floor(this.viewW * this.dpr);
+    this.mazeLayer.height = Math.floor(this.viewH * this.dpr);
+
+    const ctx = this.mazeLayerCtx;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, this.viewW, this.viewH);
+
+    const ts = this.scaledTileSize;
+    const mazeHeight = ts * CONFIG.MAZE_HEIGHT;
+
+    const wallCore = COLORS.MAZE_WALL;
+    const wallFill = ctx.createLinearGradient(0, 0, 0, mazeHeight);
+    wallFill.addColorStop(0, "#2f5bff");
+    wallFill.addColorStop(1, wallCore);
+
+    const wallGlow = "rgba(70, 160, 255, 0.55)";
+    const wallWidth = ts * 0.22;
+
+    const drawWallShape = (x: number, y: number, top: boolean, bottom: boolean, left: boolean, right: boolean): void => {
+      if (left || right) {
+        ctx.fillRect(
+          x + (left ? 0 : ts / 2 - wallWidth / 2),
+          y + ts / 2 - wallWidth / 2,
+          left && right ? ts : ts / 2 + wallWidth / 2,
+          wallWidth
+        );
+      }
+
+      if (top || bottom) {
+        ctx.fillRect(
+          x + ts / 2 - wallWidth / 2,
+          y + (top ? 0 : ts / 2 - wallWidth / 2),
+          wallWidth,
+          top && bottom ? ts : ts / 2 + wallWidth / 2
+        );
+      }
+
+      if (!top && !bottom && !left && !right) {
+        ctx.fillRect(x + ts * 0.3, y + ts * 0.3, ts * 0.4, ts * 0.4);
+      }
+    };
+
+    ctx.save();
+    ctx.translate(this.offsetX, this.offsetY);
+
+    // Glow pass
+    ctx.save();
+    ctx.shadowColor = wallGlow;
+    ctx.shadowBlur = Math.max(4, ts * 0.35);
+    ctx.fillStyle = wallCore;
+    for (let row = 0; row < this.maze.length; row++) {
+      for (let col = 0; col < this.maze[row].length; col++) {
+        if (this.maze[row][col] !== "X") continue;
+        const x = col * ts;
+        const y = row * ts;
+        const top = row > 0 && this.maze[row - 1][col] === "X";
+        const bottom = row < this.maze.length - 1 && this.maze[row + 1][col] === "X";
+        const left = col > 0 && this.maze[row][col - 1] === "X";
+        const right = col < this.maze[row].length - 1 && this.maze[row][col + 1] === "X";
+        drawWallShape(x, y, top, bottom, left, right);
+      }
+    }
+    ctx.restore();
+
+    // Core pass
+    ctx.fillStyle = wallFill;
+    for (let row = 0; row < this.maze.length; row++) {
+      for (let col = 0; col < this.maze[row].length; col++) {
+        if (this.maze[row][col] !== "X") continue;
+        const x = col * ts;
+        const y = row * ts;
+        const top = row > 0 && this.maze[row - 1][col] === "X";
+        const bottom = row < this.maze.length - 1 && this.maze[row + 1][col] === "X";
+        const left = col > 0 && this.maze[row][col - 1] === "X";
+        const right = col < this.maze[row].length - 1 && this.maze[row][col + 1] === "X";
+        drawWallShape(x, y, top, bottom, left, right);
+      }
+    }
+
+    // Inner highlight
+    ctx.globalCompositeOperation = "screen";
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = Math.max(1, ts * 0.05);
+    for (let row = 0; row < this.maze.length; row++) {
+      for (let col = 0; col < this.maze[row].length; col++) {
+        if (this.maze[row][col] !== "X") continue;
+        const x = col * ts;
+        const y = row * ts;
+        ctx.strokeRect(x + ts * 0.22, y + ts * 0.22, ts * 0.56, ts * 0.56);
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+
+    ctx.restore();
   }
 
   private initEntities(): void {
@@ -950,12 +1069,25 @@ class PacmanGame {
   }
 
   private render(): void {
-    // Clear canvas
-    this.ctx.fillStyle = COLORS.MAZE_BG;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.ctx.imageSmoothingEnabled = false;
+
+    // Background
+    const bg = this.ctx.createRadialGradient(
+      this.viewW * 0.5,
+      this.viewH * 0.35,
+      0,
+      this.viewW * 0.5,
+      this.viewH * 0.35,
+      Math.max(this.viewW, this.viewH) * 0.9
+    );
+    bg.addColorStop(0, "#050516");
+    bg.addColorStop(1, COLORS.MAZE_BG);
+    this.ctx.fillStyle = bg;
+    this.ctx.fillRect(0, 0, this.viewW, this.viewH);
+
     // Draw maze
-    this.drawMaze();
+    this.ctx.drawImage(this.mazeLayer, 0, 0, this.viewW, this.viewH);
     
     // Draw dots and power pellets
     this.drawPickups();
@@ -965,71 +1097,8 @@ class PacmanGame {
       this.drawPacman();
       this.drawGhosts();
     }
-  }
 
-  private drawMaze(): void {
-    const ctx = this.ctx;
-    const ts = this.scaledTileSize;
-    
-    ctx.save();
-    ctx.translate(this.offsetX, this.offsetY);
-    
-    // Draw walls
-    ctx.strokeStyle = COLORS.MAZE_WALL;
-    ctx.lineWidth = 2;
-    
-    for (let row = 0; row < this.maze.length; row++) {
-      for (let col = 0; col < this.maze[row].length; col++) {
-        if (this.maze[row][col] === "X") {
-          const x = col * ts;
-          const y = row * ts;
-          
-          // Check neighbors to draw connected walls
-          const top = row > 0 && this.maze[row - 1][col] === "X";
-          const bottom = row < this.maze.length - 1 && this.maze[row + 1][col] === "X";
-          const left = col > 0 && this.maze[row][col - 1] === "X";
-          const right = col < this.maze[row].length - 1 && this.maze[row][col + 1] === "X";
-          
-          ctx.fillStyle = COLORS.MAZE_WALL;
-          
-          // Draw wall segment
-          const inset = ts * 0.1;
-          const wallWidth = ts * 0.15;
-          
-          // Horizontal segments
-          if (left || right) {
-            ctx.fillRect(
-              x + (left ? 0 : ts / 2 - wallWidth / 2),
-              y + ts / 2 - wallWidth / 2,
-              (left && right ? ts : ts / 2 + wallWidth / 2),
-              wallWidth
-            );
-          }
-          
-          // Vertical segments
-          if (top || bottom) {
-            ctx.fillRect(
-              x + ts / 2 - wallWidth / 2,
-              y + (top ? 0 : ts / 2 - wallWidth / 2),
-              wallWidth,
-              (top && bottom ? ts : ts / 2 + wallWidth / 2)
-            );
-          }
-          
-          // Single block (no neighbors)
-          if (!top && !bottom && !left && !right) {
-            ctx.fillRect(
-              x + ts * 0.3,
-              y + ts * 0.3,
-              ts * 0.4,
-              ts * 0.4
-            );
-          }
-        }
-      }
-    }
-    
-    ctx.restore();
+    this.drawPostFX();
   }
 
   private drawPickups(): void {
@@ -1041,6 +1110,7 @@ class PacmanGame {
     
     // Draw dots
     ctx.fillStyle = COLORS.DOT;
+    ctx.globalAlpha = 0.92;
     for (let row = 0; row < this.dots.length; row++) {
       for (let col = 0; col < this.dots[row].length; col++) {
         if (this.dots[row][col]) {
@@ -1054,6 +1124,7 @@ class PacmanGame {
         }
       }
     }
+    ctx.globalAlpha = 1;
     
     // Draw power pellets (blinking)
     if (this.powerPelletBlink) {
@@ -1064,10 +1135,23 @@ class PacmanGame {
             const x = col * ts + ts / 2;
             const y = row * ts + ts / 2;
             const radius = ts * 0.35;
+            const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.006);
             
+            ctx.save();
+            ctx.shadowColor = "rgba(255, 220, 200, 0.65)";
+            ctx.shadowBlur = Math.max(6, ts * 0.45);
             ctx.beginPath();
             ctx.arc(x, y, radius, 0, Math.PI * 2);
             ctx.fill();
+            
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 0.55;
+            ctx.strokeStyle = "rgba(255, 220, 200, 0.85)";
+            ctx.lineWidth = Math.max(2, ts * 0.08);
+            ctx.beginPath();
+            ctx.arc(x, y, radius + ts * 0.12 + pulse * ts * 0.08, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
           }
         }
       }
@@ -1087,6 +1171,9 @@ class PacmanGame {
     const y = this.pacman.y * ts + ts / 2;
     const radius = ts * 0.9;
     
+    ctx.save();
+    ctx.shadowColor = "rgba(255, 255, 0, 0.45)";
+    ctx.shadowBlur = Math.max(4, ts * 0.35);
     ctx.fillStyle = COLORS.PACMAN;
     
     if (this.gameState === "dying") {
@@ -1116,6 +1203,18 @@ class PacmanGame {
       
       ctx.restore();
     }
+
+    // Subtle highlight
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(x - radius * 0.18, y - radius * 0.22, radius * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.restore();
     
     ctx.restore();
   }
@@ -1145,9 +1244,12 @@ class PacmanGame {
       } else {
         color = this.getGhostColor(ghost.name);
       }
-      
+
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
+      ctx.shadowBlur = Math.max(4, ts * 0.25);
       ctx.fillStyle = color;
-      
+
       // Draw ghost body
       ctx.beginPath();
       ctx.arc(x, y - radius * 0.2, radius, Math.PI, 0, false);
@@ -1171,6 +1273,7 @@ class PacmanGame {
       
       ctx.closePath();
       ctx.fill();
+      ctx.restore();
       
       // Draw eyes
       if (ghost.getMode() !== "scared") {
@@ -1185,7 +1288,7 @@ class PacmanGame {
         
         // Wavy mouth
         ctx.strokeStyle = COLORS.EYES;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = Math.max(2, radius * 0.12);
         ctx.beginPath();
         ctx.moveTo(x - radius * 0.4, y + radius * 0.3);
         for (let i = 0; i < 4; i++) {
@@ -1224,6 +1327,38 @@ class PacmanGame {
     ctx.arc(x - radius * 0.3 + pupilOffset.x, y - radius * 0.15 + pupilOffset.y, radius * 0.12, 0, Math.PI * 2);
     ctx.arc(x + radius * 0.3 + pupilOffset.x, y - radius * 0.15 + pupilOffset.y, radius * 0.12, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  private drawPostFX(): void {
+    const ctx = this.ctx;
+    const t = performance.now() * 0.001;
+
+    // Scanlines
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = "#000";
+    const spacing = this.isMobile ? 4 : 3;
+    const yOffset = Math.floor((t * 60) % spacing);
+    for (let y = yOffset; y < this.viewH; y += spacing) {
+      ctx.fillRect(0, y, this.viewW, 1);
+    }
+    ctx.restore();
+
+    // Vignette
+    ctx.save();
+    const vignette = ctx.createRadialGradient(
+      this.viewW * 0.5,
+      this.viewH * 0.45,
+      Math.min(this.viewW, this.viewH) * 0.15,
+      this.viewW * 0.5,
+      this.viewH * 0.45,
+      Math.max(this.viewW, this.viewH) * 0.75
+    );
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, "rgba(0,0,0,0.35)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, this.viewW, this.viewH);
+    ctx.restore();
   }
 
   private getGhostColor(name: GhostName): string {
