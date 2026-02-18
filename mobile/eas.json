@@ -25,7 +25,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_GAMES_BASE_URL": "https://assets.oasiz.ai"
+        "EXPO_PUBLIC_GAMES_BASE_URL": "https://oasiz-assets.vercel.app"
       }
     },
     "production": {
@@ -38,22 +38,9 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_GAMES_BASE_URL": "https://assets.oasiz.ai"
+        "EXPO_PUBLIC_GAMES_BASE_URL": "https://oasiz-assets.vercel.app"
       }
     }
   },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "YOUR_APPLE_ID",
-        "ascAppId": "YOUR_ASC_APP_ID",
-        "appleTeamId": "YOUR_TEAM_ID"
-      },
-      "android": {
-        "serviceAccountKeyPath": "./google-play-service-account.json",
-        "track": "internal",
-        "releaseStatus": "draft"
-      }
-    }
-  }
+  "submit": {}
 }

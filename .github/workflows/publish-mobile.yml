@@ -37,6 +37,10 @@ on:
 
 env:
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VERCEL_ORG_ID: team_q1yTUxlbDoLbBdk8L9raGZQg
+  VERCEL_PROJECT_ID: prj_w5BIiwubESAhAG0wGGp9n2YUyPQG
+  VERCEL_CDN_URL: https://oasiz-assets.vercel.app
 
 jobs:
   # ────────────────────────────────────────
@@ -103,15 +107,48 @@ jobs:
         with:
           name: game-builds
 
-      - name: Deploy to CDN
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Prepare CDN folder
+        run: node scripts/build-cdn.mjs
+
+      - name: Install Vercel CLI
+        run: npm i -g vercel@latest
+
+      - name: Deploy to Vercel CDN
         run: |
-          for game_dir in */; do
-            game_name=$(basename "$game_dir")
-            [ ! -f "$game_dir/dist/index.html" ] && continue
-            echo "Deploying $game_name to CDN..."
-            # TODO: Replace with your CDN upload command
-            # aws s3 sync "$game_dir/dist/" "s3://oasiz-assets/$game_name/" --delete
-          done
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "Missing VERCEL_TOKEN secret."
+            exit 1
+          fi
+
+          if [ -z "${VERCEL_ORG_ID:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "Missing VERCEL_ORG_ID / VERCEL_PROJECT_ID."
+            exit 1
+          fi
+
+          echo "Deploying ./cdn to Vercel (orgId: $VERCEL_ORG_ID, projectId: $VERCEL_PROJECT_ID)"
+          cd cdn
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}\n' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+          vercel deploy --prod --yes --token "$VERCEL_TOKEN"
+
+      - name: Smoke check CDN URLs
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_CDN_URL:-}" ]; then
+            echo "Missing VERCEL_CDN_URL."
+            exit 1
+          fi
+
+          echo "Checking: $VERCEL_CDN_URL/pacman/"
+          curl -fsS "$VERCEL_CDN_URL/pacman/" > /dev/null
+          echo "Checking: $VERCEL_CDN_URL/police-chase/"
+          curl -fsS "$VERCEL_CDN_URL/police-chase/" > /dev/null
 
   # ────────────────────────────────────────
   # Step 3: Build native app with EAS

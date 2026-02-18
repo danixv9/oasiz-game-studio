@@ -88,7 +88,7 @@ describe('getGameUrl', () => {
   it('returns the correct CDN URL', () => {
     const game = GAMES[0];
     const url = getGameUrl(game);
-    expect(url).toBe(`https://assets.oasiz.ai/${game.id}/`);
+    expect(url).toBe(`https://oasiz-assets.vercel.app/${game.id}/`);
   });
 
   it('includes trailing slash', () => {

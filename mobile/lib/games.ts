@@ -20,7 +20,7 @@ export interface Game {
 }
 
 const GAMES_BASE_URL =
-  process.env.EXPO_PUBLIC_GAMES_BASE_URL || 'https://assets.oasiz.ai';
+  process.env.EXPO_PUBLIC_GAMES_BASE_URL || 'https://oasiz-assets.vercel.app';
 
 export function getGameUrl(game: Game): string {
   return `${GAMES_BASE_URL}/${game.id}/`;

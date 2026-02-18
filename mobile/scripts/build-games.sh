@@ -121,18 +121,31 @@ echo "========================================="
 # Upload to CDN if requested
 if [ "$UPLOAD" = true ] && [ $BUILT -gt 0 ]; then
   echo ""
-  echo "Uploading to CDN..."
-  for game_dir in "$REPO_ROOT"/*/; do
-    game_name=$(basename "$game_dir")
-    [ ! -f "$game_dir/dist/index.html" ] && continue
-    [ ! -f "$game_dir/publish.json" ] && continue
+  echo "Deploying CDN..."
 
-    echo "  UPLOAD $game_name -> https://assets.oasiz.ai/$game_name/"
-    # Replace with actual CDN upload command:
-    # aws s3 cp "$game_dir/dist/" "s3://oasiz-assets/$game_name/" --recursive
-    # or: gsutil cp -r "$game_dir/dist/" "gs://oasiz-assets/$game_name/"
-  done
-  echo "CDN upload complete."
+  if [ -z "${VERCEL_TOKEN:-}" ]; then
+    if [ -f "$REPO_ROOT/.env" ]; then
+      export VERCEL_TOKEN
+      VERCEL_TOKEN="$(grep -E '^VERCEL_TOKEN=' "$REPO_ROOT/.env" | head -n 1 | cut -d= -f2-)"
+    fi
+  fi
+
+  if [ -z "${VERCEL_TOKEN:-}" ]; then
+    echo "ERROR: VERCEL_TOKEN not set (export VERCEL_TOKEN=... or add it to $REPO_ROOT/.env)"
+    exit 1
+  fi
+
+  node "$REPO_ROOT/scripts/build-cdn.mjs"
+
+  CDN_ORG_ID="${VERCEL_ORG_ID:-team_q1yTUxlbDoLbBdk8L9raGZQg}"
+  CDN_PROJECT_ID="${VERCEL_PROJECT_ID:-prj_w5BIiwubESAhAG0wGGp9n2YUyPQG}"
+  CDN_URL="${VERCEL_CDN_URL:-https://oasiz-assets.vercel.app}"
+
+  mkdir -p "$REPO_ROOT/cdn/.vercel"
+  printf '{"projectId":"%s","orgId":"%s"}\n' "$CDN_PROJECT_ID" "$CDN_ORG_ID" > "$REPO_ROOT/cdn/.vercel/project.json"
+
+  (cd "$REPO_ROOT/cdn" && bun x vercel deploy --prod --yes --token "$VERCEL_TOKEN")
+  echo "CDN deployed: $CDN_URL"
 fi
 
 exit $FAILED
