@@ -93,6 +93,14 @@ yes
 ```
 
 ```text
+list all tasks pending
+```
+
+```text
+ui/ux and game engine improvements
+```
+
+```text
 next task
 ```
 

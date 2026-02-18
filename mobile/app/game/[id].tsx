@@ -5,7 +5,6 @@ import {
   Text,
   Pressable,
   ActivityIndicator,
-  Alert,
   Share,
   Platform,
 } from 'react-native';
@@ -25,8 +24,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { getGameById, getGameUrl } from '@/lib/games';
-import { BRIDGE_SCRIPT, parseBridgeMessage } from '@/lib/bridge';
-import { saveHighScore, incrementPlayCount } from '@/lib/storage';
+import { buildInjectedScript, parseBridgeMessage } from '@/lib/bridge';
+import { getSettings, saveHighScore, incrementPlayCount, type AppSettings } from '@/lib/storage';
 import { Colors } from '@/constants/colors';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -46,7 +45,10 @@ export default function GameScreen() {
   const webViewRef = useRef<WebView>(null);
 
   const [loading, setLoading] = useState(true);
-  const [showBackButton, setShowBackButton] = useState(true);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [injectedScript, setInjectedScript] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [gameOver, setGameOver] = useState<{ score?: number } | null>(null);
 
   const backButtonOpacity = useSharedValue(1);
   const backScale = useSharedValue(1);
@@ -55,6 +57,20 @@ export default function GameScreen() {
   useEffect(() => {
     if (game) incrementPlayCount(game.id);
   }, [game]);
+
+  useEffect(() => {
+    (async () => {
+      const settings = await getSettings();
+      setAppSettings(settings);
+      setInjectedScript(
+        buildInjectedScript({
+          music: settings.musicEnabled,
+          fx: settings.soundEnabled,
+          haptics: settings.hapticsEnabled,
+        })
+      );
+    })();
+  }, []);
 
   // Auto-hide back button after 4 seconds
   useEffect(() => {
@@ -71,6 +87,7 @@ export default function GameScreen() {
 
       switch (msg.type) {
         case 'HAPTIC': {
+          if (appSettings && !appSettings.hapticsEnabled) break;
           const type = (msg.payload.type as string) || 'medium';
           const hapticFn = HAPTIC_MAP[type];
           if (hapticFn) hapticFn();
@@ -99,26 +116,53 @@ export default function GameScreen() {
           setLoading(false);
           break;
         case 'GAME_OVER':
-          // Could show interstitial, prompt replay, etc.
+          setLoading(false);
+          setGameOver({
+            score: typeof msg.payload.score === 'number' ? (msg.payload.score as number) : undefined,
+          });
           break;
       }
     },
-    [game]
+    [game, appSettings]
   );
 
   const handleBack = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (appSettings?.hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     router.back();
-  }, []);
+  }, [appSettings]);
 
   const handleBackPressIn = useCallback(() => {
+    if (appSettings?.hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     backScale.value = withSpring(0.85, { damping: 15 });
     backButtonOpacity.value = withTiming(1, { duration: 100 });
-  }, [backScale, backButtonOpacity]);
+  }, [backScale, backButtonOpacity, appSettings]);
 
   const handleBackPressOut = useCallback(() => {
     backScale.value = withSpring(1, { damping: 12 });
   }, [backScale]);
+
+  const handleRetry = useCallback(() => {
+    if (appSettings?.hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setLoadError(null);
+    setGameOver(null);
+    setLoading(true);
+    webViewRef.current?.reload();
+  }, [appSettings]);
+
+  const handlePlayAgain = useCallback(() => {
+    if (appSettings?.hapticsEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setGameOver(null);
+    setLoading(true);
+    webViewRef.current?.reload();
+  }, [appSettings]);
 
   const handleTouchStart = useCallback(() => {
     // Briefly show back button on any touch
@@ -152,36 +196,42 @@ export default function GameScreen() {
       <StatusBar hidden />
 
       {/* Game WebView */}
-      <WebView
-        ref={webViewRef}
-        source={{ uri: gameUrl }}
-        style={styles.webview}
-        injectedJavaScriptBeforeContentLoaded={BRIDGE_SCRIPT}
-        onMessage={handleMessage}
-        onLoadEnd={() => setLoading(false)}
-        onTouchStart={handleTouchStart}
-        // Performance
-        javaScriptEnabled
-        domStorageEnabled
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        // Prevent zoom and bouncing
-        scrollEnabled={false}
-        bounces={false}
-        overScrollMode="never"
-        // Remove all chrome
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        // iOS: prevent data detectors
-        dataDetectorTypes="none"
-        // Android: hardware acceleration
-        androidLayerType="hardware"
-        // Disable text selection
-        textInteractionEnabled={false}
-      />
+      {injectedScript && (
+        <WebView
+          ref={webViewRef}
+          source={{ uri: gameUrl }}
+          style={styles.webview}
+          injectedJavaScriptBeforeContentLoaded={injectedScript}
+          onMessage={handleMessage}
+          onLoadEnd={() => setLoading(false)}
+          onError={(e) => {
+            setLoading(false);
+            setLoadError(String(e.nativeEvent?.description || 'Failed to load game'));
+          }}
+          onTouchStart={handleTouchStart}
+          // Performance
+          javaScriptEnabled
+          domStorageEnabled
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+          // Prevent zoom and bouncing
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
+          // Remove all chrome
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          // iOS: prevent data detectors
+          dataDetectorTypes="none"
+          // Android: hardware acceleration
+          androidLayerType="hardware"
+          // Disable text selection
+          textInteractionEnabled={false}
+        />
+      )}
 
       {/* Loading overlay */}
-      {loading && (
+      {(loading || !injectedScript) && (
         <Animated.View
           entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(300)}
@@ -200,6 +250,74 @@ export default function GameScreen() {
               color="rgba(255,255,255,0.8)"
               style={styles.loadingSpinner}
             />
+            <Text style={styles.loadingHint}>
+              {Platform.OS === 'ios' ? 'Tap to focus' : 'Loading...'}
+            </Text>
+          </LinearGradient>
+        </Animated.View>
+      )}
+
+      {/* Error overlay */}
+      {!!loadError && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(300)}
+          style={styles.errorOverlay}
+        >
+          <View style={styles.errorCard}>
+            <Ionicons name="warning-outline" size={26} color="#fff" />
+            <Text style={styles.errorTitle}>Game failed to load</Text>
+            <Text style={styles.errorMessage} numberOfLines={4}>
+              {loadError}
+            </Text>
+            <View style={styles.errorActions}>
+              <Pressable onPress={handleRetry} style={styles.primaryBtn}>
+                <Ionicons name="refresh" size={16} color="#0B0B1E" />
+                <Text style={styles.primaryBtnText}>Retry</Text>
+              </Pressable>
+              <Pressable onPress={handleBack} style={styles.secondaryBtn}>
+                <Ionicons name="arrow-back" size={16} color="#fff" />
+                <Text style={styles.secondaryBtnText}>Back</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Game over overlay */}
+      {!!gameOver && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(300)}
+          style={styles.gameOverOverlay}
+        >
+          <LinearGradient
+            colors={[game.gradient[0], game.gradient[1]]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.gameOverGradient}
+          >
+            <View style={styles.gameOverCard}>
+              <Text style={styles.gameOverTitle}>Game Over</Text>
+              {typeof gameOver.score === 'number' && (
+                <View style={styles.gameOverScoreRow}>
+                  <Text style={styles.gameOverScoreLabel}>Score</Text>
+                  <Text style={styles.gameOverScoreValue}>
+                    {Math.max(0, Math.floor(gameOver.score)).toLocaleString()}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.gameOverActions}>
+                <Pressable onPress={handlePlayAgain} style={styles.primaryBtn}>
+                  <Ionicons name="play" size={16} color="#0B0B1E" />
+                  <Text style={styles.primaryBtnText}>Play Again</Text>
+                </Pressable>
+                <Pressable onPress={handleBack} style={styles.secondaryBtn}>
+                  <Ionicons name="grid-outline" size={16} color="#fff" />
+                  <Text style={styles.secondaryBtnText}>Arcade</Text>
+                </Pressable>
+              </View>
+            </View>
           </LinearGradient>
         </Animated.View>
       )}
@@ -256,6 +374,11 @@ const styles = StyleSheet.create({
   loadingSpinner: {
     marginTop: 8,
   },
+  loadingHint: {
+    marginTop: 16,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+  },
   backButton: {
     position: 'absolute',
     left: 16,
@@ -287,5 +410,119 @@ const styles = StyleSheet.create({
     color: Colors.purple,
     fontSize: 16,
     fontWeight: '600',
+  },
+  errorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 18,
+  },
+  errorCard: {
+    width: '100%',
+    borderRadius: 20,
+    padding: 18,
+    backgroundColor: 'rgba(20,20,30,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  errorTitle: {
+    marginTop: 10,
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#fff',
+  },
+  errorMessage: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 16,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  errorActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  primaryBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  primaryBtnText: {
+    color: '#0B0B1E',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  secondaryBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  secondaryBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  gameOverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 25,
+  },
+  gameOverGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  gameOverCard: {
+    width: '100%',
+    borderRadius: 22,
+    padding: 18,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  gameOverTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
+  gameOverScoreRow: {
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+  },
+  gameOverScoreLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '700',
+  },
+  gameOverScoreValue: {
+    marginTop: 6,
+    fontSize: 28,
+    color: '#fff',
+    fontWeight: '900',
+  },
+  gameOverActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 10,
   },
 });

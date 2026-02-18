@@ -462,3 +462,14 @@ cd mobile && bun install && bun start
 - Local verification after the change:
   - `bun run e2e`: 15/15 passed
   - `bun test tests/`: 269/269 passed
+
+## 2026-02-18 - Mobile UI/UX + Engine Integration Improvements
+
+- WebView now injects `window.__OASIZ_SETTINGS__` into games (music/fx/haptics) via `mobile/lib/bridge.ts` + `mobile/app/game/[id].tsx`.
+- Native shell now respects the global haptics toggle by ignoring `HAPTIC` messages when haptics are disabled.
+- Added a polished in-game error overlay (Retry/Back) for WebView load failures.
+- Added basic GAME_OVER UI (shows score if provided + Play Again/Arcade).
+- Verification:
+  - `bun test tests/`: 270/270 passed
+  - `cd mobile && bun x tsc --noEmit`: OK
+  - Note: `bun run e2e` is intermittently flaky at 60s test timeout (rerun of the failed game usually passes).

@@ -5,6 +5,7 @@ import { describe, it, expect } from 'bun:test';
 import {
   parseBridgeMessage,
   BRIDGE_SCRIPT,
+  buildInjectedScript,
   type BridgeMessageType,
   type BridgeMessage,
 } from '../mobile/lib/bridge';
@@ -109,5 +110,17 @@ describe('BRIDGE_SCRIPT', () => {
 
   it('uses ReactNativeWebView.postMessage', () => {
     expect(BRIDGE_SCRIPT).toContain('ReactNativeWebView.postMessage');
+  });
+});
+
+describe('buildInjectedScript', () => {
+  it('injects __OASIZ_SETTINGS__ and includes the bridge', () => {
+    const injected = buildInjectedScript({ music: false, fx: true, haptics: false });
+    expect(injected).toContain('window.__OASIZ_SETTINGS__');
+    expect(injected).toContain('"music":false');
+    expect(injected).toContain('"fx":true');
+    expect(injected).toContain('"haptics":false');
+    expect(injected).toContain('window.submitScore');
+    expect(injected).toContain('__OASIZ_BRIDGE_READY__');
   });
 });

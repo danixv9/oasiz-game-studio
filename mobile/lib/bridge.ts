@@ -53,6 +53,27 @@ export const BRIDGE_SCRIPT = `
 })();
 `;
 
+export type OasizInjectedSettings = {
+  music: boolean;
+  fx: boolean;
+  haptics: boolean;
+};
+
+export function buildInjectedScript(
+  settings?: Partial<OasizInjectedSettings>
+): string {
+  const resolved: OasizInjectedSettings = {
+    music: settings?.music ?? true,
+    fx: settings?.fx ?? true,
+    haptics: settings?.haptics ?? true,
+  };
+
+  return (
+    `(function(){try{window.__OASIZ_SETTINGS__=${JSON.stringify(resolved)};}catch(e){}})();\n` +
+    BRIDGE_SCRIPT
+  );
+}
+
 /**
  * Message types that can arrive from the WebView.
  */
