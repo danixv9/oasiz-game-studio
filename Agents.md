@@ -1,5 +1,10 @@
 Run 'bun run build' after making/changing games
 
+# No Placeholders (Required)
+- No placeholders, stubs, or demo-only implementations. Everything shipped must be functional end-to-end (frontend through backend/CDN/bridge) 100%.
+- Do not leave commented-out “deploy later” steps, fake URLs, hardcoded test data, or TODO/FIXME placeholders in production paths.
+- If a change requires credentials, infra, or a backend endpoint that is not available, stop and request what’s needed instead of landing a partial implementation.
+
 # Game Development Rules
 Follow these rules for any game development task:
 
