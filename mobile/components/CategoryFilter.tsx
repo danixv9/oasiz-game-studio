@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -20,25 +21,44 @@ import { CATEGORIES } from '@/lib/games';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
+export type CatalogFilterKey = GameCategory | 'favorites';
+
 interface CategoryFilterProps {
-  selected: GameCategory;
-  onSelect: (category: GameCategory) => void;
+  selected: CatalogFilterKey;
+  onSelect: (category: CatalogFilterKey) => void;
+  favoritesEnabled?: boolean;
 }
 
-export function CategoryFilter({ selected, onSelect }: CategoryFilterProps) {
+export function CategoryFilter({
+  selected,
+  onSelect,
+  favoritesEnabled = true,
+}: CategoryFilterProps) {
+  const filters = useMemo(() => {
+    if (!favoritesEnabled) return CATEGORIES as { key: CatalogFilterKey; label: string }[];
+
+    const base = CATEGORIES.filter((c) => c.key !== 'all');
+    return [
+      { key: 'all' as const, label: 'All Games' },
+      { key: 'favorites' as const, label: 'Favorites' },
+      ...base,
+    ];
+  }, [favoritesEnabled]);
+
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      {CATEGORIES.map((cat, index) => (
+      {filters.map((cat, index) => (
         <CategoryPill
           key={cat.key}
           label={cat.label}
           isSelected={selected === cat.key}
           onPress={() => onSelect(cat.key)}
           index={index}
+          icon={cat.key === 'favorites' ? (selected === 'favorites' ? 'heart' : 'heart-outline') : undefined}
         />
       ))}
     </ScrollView>
@@ -50,9 +70,10 @@ interface CategoryPillProps {
   isSelected: boolean;
   onPress: () => void;
   index: number;
+  icon?: keyof typeof Ionicons.glyphMap;
 }
 
-function CategoryPill({ label, isSelected, onPress, index }: CategoryPillProps) {
+function CategoryPill({ label, isSelected, onPress, index, icon }: CategoryPillProps) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -89,13 +110,17 @@ function CategoryPill({ label, isSelected, onPress, index }: CategoryPillProps) 
             end={{ x: 1, y: 0 }}
             style={styles.pill}
           >
-            <Text style={[styles.pillText, styles.pillTextSelected]}>
-              {label}
-            </Text>
+            <View style={styles.pillRow}>
+              {icon && <Ionicons name={icon} size={14} color="#fff" />}
+              <Text style={[styles.pillText, styles.pillTextSelected]}>{label}</Text>
+            </View>
           </LinearGradient>
         ) : (
           <View style={[styles.pill, styles.pillInactive]}>
-            <Text style={styles.pillText}>{label}</Text>
+            <View style={styles.pillRow}>
+              {icon && <Ionicons name={icon} size={14} color={Colors.textSecondary} />}
+              <Text style={styles.pillText}>{label}</Text>
+            </View>
           </View>
         )}
       </AnimatedPressable>
@@ -113,6 +138,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 14,
+  },
+  pillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   pillInactive: {
     backgroundColor: Colors.glass,

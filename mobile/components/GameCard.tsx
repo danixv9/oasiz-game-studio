@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -31,9 +32,17 @@ interface GameCardProps {
   game: Game;
   index: number;
   highScore?: number;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
-export function GameCard({ game, index, highScore }: GameCardProps) {
+export function GameCard({
+  game,
+  index,
+  highScore,
+  isFavorite = false,
+  onToggleFavorite,
+}: GameCardProps) {
   const scale = useSharedValue(1);
   const pressed = useSharedValue(0);
 
@@ -60,6 +69,15 @@ export function GameCard({ game, index, highScore }: GameCardProps) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push(`/game/${game.id}`);
   }, [game.id]);
+
+  const handleFavoritePress = useCallback(
+    (e: any) => {
+      if (typeof e?.stopPropagation === 'function') e.stopPropagation();
+      Haptics.selectionAsync();
+      onToggleFavorite?.();
+    },
+    [onToggleFavorite],
+  );
 
   return (
     <Animated.View
@@ -111,9 +129,22 @@ export function GameCard({ game, index, highScore }: GameCardProps) {
 
           {/* Game info */}
           <View style={styles.infoContainer}>
-            <Text style={styles.title} numberOfLines={1}>
-              {game.title}
-            </Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={1}>
+                {game.title}
+              </Text>
+              <Pressable
+                onPress={handleFavoritePress}
+                hitSlop={10}
+                style={[styles.favoriteBtn, isFavorite && styles.favoriteBtnOn]}
+              >
+                <Ionicons
+                  name={isFavorite ? 'heart' : 'heart-outline'}
+                  size={16}
+                  color={isFavorite ? '#fff' : 'rgba(255, 255, 255, 0.9)'}
+                />
+              </Pressable>
+            </View>
             {highScore !== undefined && highScore > 0 && (
               <Text style={styles.score}>Best: {highScore.toLocaleString()}</Text>
             )}
@@ -189,11 +220,31 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   title: {
+    flex: 1,
     fontSize: 15,
     fontWeight: '700',
     color: Colors.textPrimary,
     letterSpacing: 0.3,
+  },
+  favoriteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  favoriteBtnOn: {
+    backgroundColor: 'rgba(236, 72, 153, 0.35)',
+    borderColor: 'rgba(236, 72, 153, 0.55)',
   },
   score: {
     fontSize: 11,
