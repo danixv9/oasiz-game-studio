@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 async function blockThirdPartyAssetsForSmoke(page: import("@playwright/test").Page): Promise<void> {
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
-  await page.route("https://assets.oasiz.ai/audio/**", (route) => route.abort());
+  await page.route("https://oasiz-assets.vercel.app/audio/**", (route) => route.abort());
 }
 
 function shouldIgnoreConsoleError(text: string): boolean {

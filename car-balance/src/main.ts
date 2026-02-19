@@ -386,12 +386,12 @@ function init(): void {
   audioContext = null;
   
   // Load theme music
-  themeMusic = new Audio('https://assets.oasiz.ai/audio/balance.mp3');
+  themeMusic = new Audio('https://oasiz-assets.vercel.app/audio/balance.mp3');
   themeMusic.loop = true;
   themeMusic.volume = 0.3;
   
   // Load game over music
-  gameOverMusic = new Audio('https://assets.oasiz.ai/audio/car-balance/gameover.mp3');
+  gameOverMusic = new Audio('https://oasiz-assets.vercel.app/audio/car-balance/gameover.mp3');
   gameOverMusic.loop = false;
   gameOverMusic.volume = 0.4;
   

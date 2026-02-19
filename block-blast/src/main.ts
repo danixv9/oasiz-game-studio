@@ -540,9 +540,9 @@ class AudioManager {
     if (!this.ctx || this.buffersLoaded) return;
     try {
       const [menuR, gameR, overR] = await Promise.all([
-        fetch("https://assets.oasiz.ai/audio/menu-music.wav"),
-        fetch("https://assets.oasiz.ai/audio/game-music.mp3"),
-        fetch("https://assets.oasiz.ai/audio/gameover-music.wav"),
+        fetch("https://oasiz-assets.vercel.app/audio/menu-music.wav"),
+        fetch("https://oasiz-assets.vercel.app/audio/game-music.mp3"),
+        fetch("https://oasiz-assets.vercel.app/audio/gameover-music.wav"),
       ]);
       const [menuD, gameD, overD] = await Promise.all([menuR.arrayBuffer(), gameR.arrayBuffer(), overR.arrayBuffer()]);
       const [mb, gb, ob] = await Promise.all([

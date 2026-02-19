@@ -231,7 +231,7 @@ class AudioManager {
 
     try {
       console.log("[AudioManager.loadMusic] Loading music...");
-      const response = await fetch("https://assets.oasiz.ai/audio/threes.mp3");
+      const response = await fetch("https://oasiz-assets.vercel.app/audio/threes.mp3");
       const arrayBuffer = await response.arrayBuffer();
       this.musicBuffer = await this.ctx.decodeAudioData(arrayBuffer);
       this.buffersLoaded = true;

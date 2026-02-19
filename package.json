@@ -6,6 +6,7 @@
   "scripts": {
     "test": "bun test tests/",
     "build:cdn": "node scripts/build-cdn.mjs",
+    "sync:legacy-assets": "node scripts/sync-legacy-assets.mjs",
     "build:published": "node scripts/build-published.mjs",
     "build:published:install": "node scripts/build-published.mjs --install --frozen-lockfile",
     "e2e:install": "node ./node_modules/playwright/cli.js install --with-deps chromium",

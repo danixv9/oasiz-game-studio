@@ -456,7 +456,7 @@ const settings: Settings = {
 };
 
 // Background music
-const MUSIC_URL = "https://assets.oasiz.ai/audio/car-song.mp3";
+const MUSIC_URL = "https://oasiz-assets.vercel.app/audio/car-song.mp3";
 let bgMusic: HTMLAudioElement | null = null;
 
 function initMusic(): void {

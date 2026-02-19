@@ -237,7 +237,7 @@ class AudioManager {
       this.musicGain.connect(this.masterGain);
 
       // Setup music element
-      this.music = new Audio("https://assets.oasiz.ai/audio/tank-song.mp3");
+      this.music = new Audio("https://oasiz-assets.vercel.app/audio/tank-song.mp3");
       this.music.loop = true;
       this.music.crossOrigin = "anonymous";
       

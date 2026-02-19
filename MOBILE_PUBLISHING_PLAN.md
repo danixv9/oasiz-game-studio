@@ -20,7 +20,7 @@
 │  │  Full-Screen WebView                                │    │
 │  │  ┌───────────────────────────────────────────────┐  │    │
 │  │  │  Game HTML (loaded from CDN)                  │  │    │
-│  │  │  https://assets.oasiz.ai/<game>/              │  │    │
+│  │  │  https://oasiz-assets.vercel.app/<game>/      │  │    │
 │  │  │                                               │  │    │
 │  │  │  Bridge JS injected before load:              │  │    │
 │  │  │  - window.submitScore → postMessage → native  │  │    │

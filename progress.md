@@ -14,7 +14,7 @@
 
 Created a full architectural plan covering:
 - Expo SDK 52 mobile app with expo-router file-based routing
-- WebView-based game loading from CDN (`https://assets.oasiz.ai/<game-id>/`)
+- WebView-based game loading from CDN (`https://oasiz-assets.vercel.app/<game-id>/`)
 - Native bridge design: `window.submitScore`, `window.triggerHaptic`, `window.shareRoomCode`
 - CI/CD pipeline: build games → deploy to CDN → EAS Build → EAS Submit
 - Store submission instructions (Apple App Store + Google Play)
@@ -213,7 +213,7 @@ astro-party, bar-bounce, basketball-shoot, bowmasters, elevator-action, finger-f
 1. **CDN deployment not implemented**
    - File: `.github/workflows/publish-mobile.yml` lines ~112-120
    - The "Deploy CDN" step is a placeholder - the AWS S3 sync command is commented out
-   - Need to set up actual CDN hosting at `https://assets.oasiz.ai/`
+   - CDN hosting now lives at `https://oasiz-assets.vercel.app/`
    - Could use AWS S3 + CloudFront, Cloudflare R2, or any static hosting
 
 2. **EAS credentials are placeholders**

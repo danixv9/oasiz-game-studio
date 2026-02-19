@@ -155,7 +155,7 @@ class SoundManager {
   
   constructor() {
     // Classic Pac-Man sounds from the 1980 arcade game
-    const audioBase = "https://assets.oasiz.ai/audio/";
+    const audioBase = "https://oasiz-assets.vercel.app/audio/";
     this.loadSound("waka", audioBase + "pacman_chomp.wav");
     this.loadSound("death", audioBase + "pacman_death.wav");
     this.loadSound("ghost-eat", audioBase + "pacman_eatghost.wav");

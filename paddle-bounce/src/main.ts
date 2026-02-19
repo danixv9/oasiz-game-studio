@@ -228,7 +228,7 @@ let accentColor = CONFIG.BACKGROUND_COLORS[0].accent;
 
 // Paddle image
 const paddleImage = new Image();
-paddleImage.src = "https://assets.oasiz.ai/assets/paddle-bounce/paddle.png";
+paddleImage.src = "https://oasiz-assets.vercel.app/assets/paddle-bounce/paddle.png";
 let paddleImageLoaded = false;
 paddleImage.onload = () => {
   paddleImageLoaded = true;
@@ -236,7 +236,7 @@ paddleImage.onload = () => {
 };
 
 // Audio
-const bgMusic = new Audio("https://assets.oasiz.ai/audio/paddle_song.mp3");
+const bgMusic = new Audio("https://oasiz-assets.vercel.app/audio/paddle_song.mp3");
 bgMusic.loop = true;
 bgMusic.preload = "auto";
 

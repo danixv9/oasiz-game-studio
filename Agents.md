@@ -132,7 +132,7 @@ See `draw-the-thing/src/main.ts` and `draw-the-thing/src/GameManager.ts` for com
     - "epic orchestral battle theme with dramatic drums and brass"
     - "peaceful 8-bit chiptune melody for a puzzle game menu"
     - "tense electronic ambient music with synth pads for a sci-fi game"
-  - **Audio CDN**: Generated audio files are hosted at `https://assets.oasiz.ai/audio/`. Reference audio in games using this base URL (e.g., `fetch("https://assets.oasiz.ai/audio/game-music.wav")`).
+  - **Audio CDN**: Generated audio files are hosted at `https://oasiz-assets.vercel.app/audio/`. Reference audio in games using this base URL (e.g., `fetch("https://oasiz-assets.vercel.app/audio/game-music.wav")`).
 - **UploadThing (File Hosting)**: Use `UTApi` from `uploadthing/server` to upload local files and get public URLs. Requires `UPLOADTHING_TOKEN`.
   - To upload a Buffer: `await utapi.uploadFiles([new File([buffer], 'filename.png')])`
   - Get URL from response: `response.data.url`

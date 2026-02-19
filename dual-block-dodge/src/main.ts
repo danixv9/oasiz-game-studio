@@ -235,7 +235,7 @@ let settings: Settings = {
 let gridOffset = 0;
 
 // ============= AUDIO =============
-const bgMusic = new Audio("https://assets.oasiz.ai/audio/dualblock-song.mp3");
+const bgMusic = new Audio("https://oasiz-assets.vercel.app/audio/dualblock-song.mp3");
 bgMusic.loop = true;
 
 // Web Audio API for synth sounds

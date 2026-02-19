@@ -136,6 +136,7 @@ if [ "$UPLOAD" = true ] && [ $BUILT -gt 0 ]; then
   fi
 
   node "$REPO_ROOT/scripts/build-cdn.mjs"
+  node "$REPO_ROOT/scripts/sync-legacy-assets.mjs"
 
   CDN_ORG_ID="${VERCEL_ORG_ID:-team_q1yTUxlbDoLbBdk8L9raGZQg}"
   CDN_PROJECT_ID="${VERCEL_PROJECT_ID:-prj_w5BIiwubESAhAG0wGGp9n2YUyPQG}"

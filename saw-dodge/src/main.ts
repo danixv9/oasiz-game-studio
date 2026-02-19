@@ -338,7 +338,7 @@ let audioContext: AudioContext | null = null;
 let bgMusic: HTMLAudioElement | null = null;
 let bgMusicLoaded = false;
 
-const BG_MUSIC_URL = "https://assets.oasiz.ai/audio/dodge-song.mp3";
+const BG_MUSIC_URL = "https://oasiz-assets.vercel.app/audio/dodge-song.mp3";
 
 function initAudio(): void {
   if (!audioContext) {

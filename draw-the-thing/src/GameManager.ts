@@ -96,7 +96,7 @@ export class GameManager {
 
     // Initialize background music
     this.bgMusic = new Audio(
-      "https://assets.oasiz.ai/audio/soundscrate-plucky-walk.mp3",
+      "https://oasiz-assets.vercel.app/audio/soundscrate-plucky-walk.mp3",
     );
     this.bgMusic.loop = true;
     this.bgMusic.volume = 0.3;

@@ -270,7 +270,7 @@ For detailed patterns (player state, host logic, RPC calls), see `Agents.md` and
 ## Assets
 
 
-Asset files will be hosted at `https://assets.oasiz.ai/ when importing your game to the platform. For development, include assets locally.
+Asset files are hosted at `https://oasiz-assets.vercel.app/` when importing your game to the platform. For development, include assets locally.
 
 ---
 
