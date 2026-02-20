@@ -61,6 +61,14 @@ const CONFIG = {
   // Particles
   PARTICLE_COUNT: 8,
   PARTICLE_LIFE: 400,
+  PARTICLE_DRAG: 0.986,
+  PARTICLE_GLOW: 18,
+
+  // Advanced visual FX
+  TRAIL_LENGTH: 10,
+  AMBIENT_ORB_COUNT: 22,
+  BALL_SHADOW_SOFTNESS: 26,
+  HIT_SHAKE_MAX: 8,
 
   // Coins
   COIN_SIZE: 32, // Slightly smaller than ball (radius 20 = diam 40)
@@ -89,6 +97,9 @@ interface Particle {
   life: number;
   maxLife: number;
   size: number;
+  hueShift: number;
+  drag: number;
+  glow: number;
 }
 
 interface Coin {
@@ -96,8 +107,19 @@ interface Coin {
   y: number;
   rotation: number;
   bob: number;
+  phaseOffset: number;
   collected: boolean;
   collectTime: number;
+}
+
+interface AmbientOrb {
+  x: number;
+  y: number;
+  radius: number;
+  speed: number;
+  drift: number;
+  phase: number;
+  alpha: number;
 }
 
 interface Settings {
@@ -134,6 +156,14 @@ function darkenColor(hex: string, amount: number): string {
   const g = Math.max(0, ((num >> 8) & 0x00ff) - amount);
   const b = Math.max(0, (num & 0x0000ff) - amount);
   return "#" + ((r << 16) | (g << 8) | b).toString(16).padStart(6, "0");
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const value = parseInt(hex.slice(1), 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
 }
 
 // ============= GLOBALS =============
@@ -197,6 +227,12 @@ let hitPulseLife = 0;
 let hitPulseX = 0;
 let hitPulseY = 0;
 let hitPulseStrength = 0.75;
+let visualTime = 0;
+let ballSpeedSmoothed = 0;
+let bloomIntensity = 0;
+let shakeLife = 0;
+let shakeStrength = 0;
+let ambientOrbs: AmbientOrb[] = [];
 
 // Score
 let score = 0;
@@ -265,10 +301,54 @@ function playHitSound(isCenterHit: boolean): void {
 function drawBackground(): void {
   ctx.drawImage(backgroundLayer, 0, 0, w, h);
 
-  // Subtle animated grain (pre-generated tile)
+  const time = visualTime * 0.001;
+
+  if (ambientOrbs.length > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    for (let i = 0; i < ambientOrbs.length; i++) {
+      const orb = ambientOrbs[i];
+      const x = orb.x + Math.sin(time * orb.drift + orb.phase) * orb.radius * 3.2;
+      const y =
+        ((orb.y + time * orb.speed) % (h + orb.radius * 2)) - orb.radius;
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, orb.radius * 7.5);
+      glow.addColorStop(0, hexToRgba(accentColor, orb.alpha));
+      glow.addColorStop(0.45, hexToRgba(accentColor, orb.alpha * 0.3));
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(
+        x - orb.radius * 8,
+        y - orb.radius * 8,
+        orb.radius * 16,
+        orb.radius * 16,
+      );
+    }
+    ctx.restore();
+  }
+
+  if (gameState !== "START") {
+    const speedEnergy = clamp(ballSpeedSmoothed / 24, 0, 1);
+    const field = ctx.createRadialGradient(
+      ballX,
+      ballY,
+      CONFIG.BALL_RADIUS * 0.5,
+      ballX,
+      ballY,
+      Math.max(w, h) * (0.35 + speedEnergy * 0.3),
+    );
+    field.addColorStop(0, hexToRgba(accentColor, 0.22 + speedEnergy * 0.3));
+    field.addColorStop(0.5, hexToRgba(accentColor, 0.08 + speedEnergy * 0.12));
+    field.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = field;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
   if (grainTile.width > 0) {
     const tileSize = grainTile.width / dpr;
-    const t = Date.now() * 0.02;
+    const t = visualTime * 0.02;
     const ox = -((t % tileSize) + tileSize);
     const oy = -(((t * 0.65) % tileSize) + tileSize);
     ctx.save();
@@ -281,7 +361,6 @@ function drawBackground(): void {
     ctx.restore();
   }
 
-  // Center hit flash effect - bright white flash
   if (centerHitFlash > 0) {
     const flashAlpha = (centerHitFlash / 300) * 0.6;
     ctx.fillStyle = "rgba(255, 255, 255, " + flashAlpha + ")";
@@ -310,25 +389,39 @@ function drawScore(): void {
 function drawPaddle(): void {
   const px = paddleX;
   const py = paddleY - paddleLiftOffset;
+  const speedEnergy = clamp(ballSpeedSmoothed / 28, 0, 1);
+  const paddleGlowHeight = CONFIG.PADDLE_HEIGHT * (1.7 + speedEnergy * 0.8);
+
+  ctx.save();
+  ctx.globalAlpha = 0.22 + speedEnergy * 0.2;
+  ctx.fillStyle = hexToRgba(accentColor, 0.42);
+  ctx.shadowColor = accentColor;
+  ctx.shadowBlur = 24 + speedEnergy * 18;
+  ctx.beginPath();
+  ctx.ellipse(
+    px,
+    py + CONFIG.PADDLE_HEIGHT * 0.42,
+    paddleWidth * 0.28,
+    paddleGlowHeight,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.restore();
 
   if (paddleImageLoaded) {
-    // Use the image asset
     const imgWidth = paddleWidth * 1.1;
     const imgHeight = imgWidth * (paddleImage.height / paddleImage.width);
 
-    // Pivot point for tilt (bottom of paddle face - where hand would hold it)
     const drawY = py - imgHeight * 0.35;
-    const pivotY = drawY + imgHeight * 0.7; // Near bottom of paddle
+    const pivotY = drawY + imgHeight * 0.7;
 
     ctx.save();
-
-    // Apply Y-scale to simulate tilting back towards user
-    // Scale from the bottom pivot point
     ctx.translate(px, pivotY);
     ctx.scale(1, paddleTiltScale);
     ctx.translate(-px, -pivotY);
 
-    // Draw shadow
     ctx.globalAlpha = 0.2;
     ctx.drawImage(
       paddleImage,
@@ -338,13 +431,34 @@ function drawPaddle(): void {
       imgHeight,
     );
 
-    // Draw paddle
     ctx.globalAlpha = 1;
     ctx.drawImage(paddleImage, px - imgWidth / 2, drawY, imgWidth, imgHeight);
 
+    const edgeGlow = ctx.createLinearGradient(
+      px - imgWidth * 0.5,
+      drawY + imgHeight * 0.08,
+      px + imgWidth * 0.5,
+      drawY + imgHeight * 0.5,
+    );
+    edgeGlow.addColorStop(0, "rgba(255,255,255,0.22)");
+    edgeGlow.addColorStop(0.4, "rgba(255,255,255,0.04)");
+    edgeGlow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = edgeGlow;
+    ctx.beginPath();
+    ctx.ellipse(
+      px - imgWidth * 0.05,
+      drawY + imgHeight * 0.35,
+      imgWidth * 0.26,
+      imgHeight * 0.18,
+      -0.32,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+
     ctx.restore();
   } else {
-    // Fallback: simple ellipse while image loads
     ctx.save();
     ctx.translate(px, py);
     ctx.scale(1, paddleTiltScale);
@@ -369,26 +483,46 @@ function drawPaddle(): void {
 }
 
 function drawBall(): void {
-  // Draw trail (glow sprite only)
+  const speed = Math.hypot(ballVX, ballVY);
+  const speedEnergy = clamp(speed / 26, 0, 1);
+  const shadowT = clamp((ballY / h) * 1.2, 0.15, 1);
+
+  ctx.save();
+  ctx.globalAlpha = 0.14 * shadowT;
+  ctx.fillStyle = "#000";
+  ctx.filter = "blur(" + (CONFIG.BALL_SHADOW_SOFTNESS * shadowT).toFixed(1) + "px)";
+  ctx.beginPath();
+  ctx.ellipse(
+    ballX + ballVX * 0.2,
+    paddleY + CONFIG.PADDLE_HEIGHT * 0.4,
+    CONFIG.BALL_RADIUS * (0.65 + shadowT * 0.65),
+    CONFIG.BALL_RADIUS * (0.28 + shadowT * 0.2),
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.filter = "none";
+  ctx.restore();
+
   for (let i = 0; i < ballTrail.length; i++) {
     const t = ballTrail[i];
-    const glowSize = CONFIG.BALL_RADIUS * 4;
+    const glowSize = CONFIG.BALL_RADIUS * (3.8 + i * 0.15);
     ctx.save();
-    ctx.globalAlpha = t.alpha * 0.22;
+    ctx.globalAlpha = t.alpha * (0.14 + speedEnergy * 0.25);
     ctx.drawImage(
       ballGlowSprite,
-      t.x - glowSize / 2,
-      t.y - glowSize / 2,
+      t.x - glowSize / 2 - ballVX * 0.12,
+      t.y - glowSize / 2 - ballVY * 0.12,
       glowSize,
       glowSize,
     );
     ctx.restore();
   }
 
-  // Main glow + ball sprite
-  const glowSize = CONFIG.BALL_RADIUS * 4;
+  const glowSize = CONFIG.BALL_RADIUS * (4 + speedEnergy * 0.7);
   ctx.save();
-  ctx.globalAlpha = 0.65;
+  ctx.globalAlpha = 0.6 + speedEnergy * 0.2;
   ctx.drawImage(
     ballGlowSprite,
     ballX - glowSize / 2,
@@ -398,6 +532,19 @@ function drawBall(): void {
   );
   ctx.restore();
 
+  if (bloomIntensity > 0) {
+    const bloomR = CONFIG.BALL_RADIUS * (3.4 + bloomIntensity * 1.6);
+    const bloom = ctx.createRadialGradient(ballX, ballY, 0, ballX, ballY, bloomR);
+    bloom.addColorStop(0, "rgba(255,255,255," + (0.35 + bloomIntensity * 0.28) + ")");
+    bloom.addColorStop(0.5, hexToRgba(accentColor, 0.26 + bloomIntensity * 0.2));
+    bloom.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = bloom;
+    ctx.fillRect(ballX - bloomR, ballY - bloomR, bloomR * 2, bloomR * 2);
+    ctx.restore();
+  }
+
   const ballSize = CONFIG.BALL_RADIUS * 2;
   ctx.drawImage(
     ballCoreSprite,
@@ -406,14 +553,55 @@ function drawBall(): void {
     ballSize,
     ballSize,
   );
+
+  const spin = visualTime * 0.01 + speed * 0.04;
+  ctx.save();
+  ctx.translate(ballX, ballY);
+  ctx.rotate(spin);
+  ctx.strokeStyle = "rgba(0,0,0,0.2)";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(0, 0, CONFIG.BALL_RADIUS * 0.64, -1.15, 1.15);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, CONFIG.BALL_RADIUS * 0.64, Math.PI - 1.15, Math.PI + 1.15);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawParticles(): void {
   for (const p of particles) {
     const alpha = p.life / p.maxLife;
+    const radius = p.size * (0.5 + alpha * 0.75);
+    const speed = Math.hypot(p.vx, p.vy);
+    const trailX = p.x - p.vx * 1.3;
+    const trailY = p.y - p.vy * 1.3;
+
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.strokeStyle = hexToRgba(accentColor, 0.3 + p.hueShift * 0.5);
+    ctx.lineWidth = Math.max(1, radius * 0.3);
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255, 255, 255, " + alpha + ")";
+    ctx.moveTo(trailX, trailY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    ctx.restore();
+
+    const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius + p.glow);
+    glow.addColorStop(0, "rgba(255,255,255," + (0.55 * alpha) + ")");
+    glow.addColorStop(0.45, hexToRgba(accentColor, (0.4 + p.hueShift * 0.35) * alpha));
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(
+      p.x - (radius + p.glow),
+      p.y - (radius + p.glow),
+      (radius + p.glow) * 2,
+      (radius + p.glow) * 2,
+    );
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255, 255, 255, " + (alpha * (0.9 + speed * 0.015)) + ")";
     ctx.fill();
   }
 }
@@ -461,10 +649,16 @@ function drawHitPulse(): void {
   ctx.globalAlpha = alpha;
   ctx.strokeStyle = accentColor;
   ctx.shadowColor = accentColor;
-  ctx.shadowBlur = 18;
+  ctx.shadowBlur = 26;
   ctx.lineWidth = Math.max(2, 6 * (1 - t));
   ctx.beginPath();
   ctx.arc(hitPulseX, hitPulseY, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = alpha * 0.7;
+  ctx.lineWidth = Math.max(1, 3 * (1 - t));
+  ctx.beginPath();
+  ctx.arc(hitPulseX, hitPulseY, radius * 1.45, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
 }
@@ -473,7 +667,43 @@ function drawPostFx(): void {
   ctx.save();
   ctx.globalAlpha = 0.9;
   ctx.drawImage(postFxLayer, 0, 0, w, h);
+
+  if (bloomIntensity > 0 || hitPulseLife > 0) {
+    const ring = clamp(bloomIntensity + hitPulseLife / 220, 0, 1.6);
+    const bloom = ctx.createRadialGradient(
+      ballX,
+      ballY,
+      CONFIG.BALL_RADIUS * 0.5,
+      ballX,
+      ballY,
+      Math.max(w, h) * (0.2 + ring * 0.12),
+    );
+    bloom.addColorStop(0, "rgba(255,255,255,0.28)");
+    bloom.addColorStop(0.35, hexToRgba(accentColor, 0.2 + ring * 0.15));
+    bloom.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = bloom;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  if (hitPulseLife > 0) {
+    const amount = clamp(hitPulseLife / 220, 0, 1);
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.12 * amount;
+    ctx.drawImage(postFxLayer, -2 * amount, 0, w, h);
+    ctx.drawImage(postFxLayer, 2 * amount, 0, w, h);
+  }
   ctx.restore();
+}
+
+function updateVisualFx(dt: number): void {
+  visualTime += dt;
+  ballSpeedSmoothed = lerp(ballSpeedSmoothed, Math.hypot(ballVX, ballVY), 0.16);
+  bloomIntensity = Math.max(0, bloomIntensity - dt * 0.0018);
+  if (shakeLife > 0) {
+    shakeLife -= dt;
+    if (shakeLife < 0) shakeLife = 0;
+  }
 }
 
 // ============= GAME LOGIC =============
@@ -499,6 +729,9 @@ function resetGame(): void {
   paddleLiftOffset = 0;
   particles = [];
   coins = [];
+  bloomIntensity = 0;
+  shakeLife = 0;
+  shakeStrength = 0;
   nextCoinSpawnTimer =
     CONFIG.COIN_SPAWN_MIN +
     Math.random() * (CONFIG.COIN_SPAWN_MAX - CONFIG.COIN_SPAWN_MIN);
@@ -528,16 +761,21 @@ function spawnParticles(x: number, y: number): void {
       life: CONFIG.PARTICLE_LIFE,
       maxLife: CONFIG.PARTICLE_LIFE,
       size: 4 + Math.random() * 4,
+      hueShift: Math.random(),
+      drag: CONFIG.PARTICLE_DRAG - Math.random() * 0.01,
+      glow: CONFIG.PARTICLE_GLOW + Math.random() * 6,
     });
   }
 }
 
 function updateParticles(dt: number): void {
+  const dtNorm = dt / 16.6667;
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.x += p.vx;
     p.y += p.vy;
-    p.vy += 0.1; // Gravity
+    p.vx *= Math.pow(p.drag, dtNorm);
+    p.vy = p.vy * Math.pow(p.drag, dtNorm) + 0.1 * dtNorm;
     p.life -= dt;
     if (p.life <= 0) {
       particles.splice(i, 1);
@@ -558,6 +796,7 @@ function spawnCoin(): void {
     y: coinY,
     rotation: Math.random() * Math.PI * 2,
     bob: 0,
+    phaseOffset: Math.random() * Math.PI * 2,
     collected: false,
     collectTime: 0,
   });
@@ -580,24 +819,41 @@ function drawCoins(): void {
 
     ctx.save();
 
-    const bobOffset = Math.sin(Date.now() / 300) * 5;
+    const bobOffset = Math.sin(visualTime / 300 + coin.phaseOffset) * 5;
     const drawY = coin.y + bobOffset;
     const size = CONFIG.COIN_SIZE;
     const alpha = coin.collected ? 1 - coin.collectTime / 200 : 1;
     const scale = coin.collected ? 1 + coin.collectTime / 100 : 1;
+    const glowBoost = coin.collected ? 1.4 : 1;
 
     ctx.translate(coin.x, drawY);
     ctx.rotate(
-      coin.rotation + (coin.collected ? 0 : Math.sin(Date.now() / 500) * 0.2),
+      coin.rotation +
+        (coin.collected ? 0 : Math.sin(visualTime / 500 + coin.phaseOffset) * 0.2),
     );
     ctx.scale(scale, scale);
     ctx.globalAlpha = alpha;
 
     const half = size / 2;
 
+    ctx.globalCompositeOperation = "screen";
+    const aura = ctx.createRadialGradient(0, 0, size * 0.1, 0, 0, size * 1.6);
+    aura.addColorStop(0, "rgba(255,255,255," + (0.28 * glowBoost) + ")");
+    aura.addColorStop(0.45, "rgba(255,214,86," + (0.2 * glowBoost) + ")");
+    aura.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = aura;
+    ctx.fillRect(-size * 1.6, -size * 1.6, size * 3.2, size * 3.2);
+
+    ctx.globalCompositeOperation = "source-over";
     ctx.shadowColor = accentColor;
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 12;
     ctx.drawImage(coinSprite, -half, -half, size, size);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(-size * 0.08, -size * 0.14, size * 0.24, size * 0.11, -0.4, 0, Math.PI * 2);
+    ctx.stroke();
 
     ctx.restore();
   }
@@ -658,8 +914,13 @@ function collectCoin(coin: Coin): void {
       life: 400,
       maxLife: 400,
       size: 3 + Math.random() * 3,
+      hueShift: 0.65 + Math.random() * 0.35,
+      drag: CONFIG.PARTICLE_DRAG - Math.random() * 0.012,
+      glow: CONFIG.PARTICLE_GLOW + 6 + Math.random() * 8,
     });
   }
+
+  bloomIntensity = clamp(bloomIntensity + 0.45, 0, 2.2);
 }
 
 function handlePaddleHit(): void {
@@ -720,13 +981,12 @@ function handlePaddleHit(): void {
 }
 
 function updateBall(): void {
-  // Update trail
   ballTrail.unshift({ x: ballX, y: ballY, alpha: 1 });
-  if (ballTrail.length > 6) {
+  if (ballTrail.length > CONFIG.TRAIL_LENGTH) {
     ballTrail.pop();
   }
   for (const t of ballTrail) {
-    t.alpha *= 0.8;
+    t.alpha *= 0.84;
   }
 
   // Apply gravity - ball accelerates downward
@@ -914,8 +1174,21 @@ function updateBall(): void {
         life: CONFIG.PARTICLE_LIFE,
         maxLife: CONFIG.PARTICLE_LIFE,
         size: isCenterZone ? 5 + Math.random() * 5 : 4 + Math.random() * 4,
+        hueShift: isCenterZone ? 0.7 + Math.random() * 0.3 : Math.random() * 0.65,
+        drag: CONFIG.PARTICLE_DRAG - Math.random() * 0.014,
+        glow: CONFIG.PARTICLE_GLOW + (isCenterZone ? 12 : 4) + Math.random() * 6,
       });
     }
+
+    bloomIntensity = clamp(
+      bloomIntensity + (isCenterZone ? 0.9 : 0.45),
+      0,
+      2.4,
+    );
+    shakeLife = isCenterZone ? 180 : 120;
+    shakeStrength = isCenterZone
+      ? CONFIG.HIT_SHAKE_MAX
+      : CONFIG.HIT_SHAKE_MAX * 0.6;
 
     handlePaddleHit();
   }
@@ -1080,7 +1353,9 @@ function showStartScreen(): void {
   // Reset color to default
   currentColorIndex = 0;
   bgColor = CONFIG.BACKGROUND_COLORS[0].bg;
+  accentColor = CONFIG.BACKGROUND_COLORS[0].accent;
   gameContainer.style.background = bgColor;
+  rebuildVisualLayers();
 
   // Show start screen
   startScreen.classList.remove("hidden");
@@ -1264,6 +1539,25 @@ function rebuildBackgroundLayer(): void {
   grainCtx.putImageData(img, 0, 0);
 }
 
+function rebuildAmbientOrbs(): void {
+  ambientOrbs = [];
+  const count = Math.max(
+    12,
+    Math.floor(CONFIG.AMBIENT_ORB_COUNT * (Math.min(w, h) / 700)),
+  );
+  for (let i = 0; i < count; i++) {
+    ambientOrbs.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      radius: 8 + Math.random() * 18,
+      speed: 6 + Math.random() * 18,
+      drift: 0.25 + Math.random() * 0.55,
+      phase: Math.random() * Math.PI * 2,
+      alpha: 0.05 + Math.random() * 0.1,
+    });
+  }
+}
+
 function rebuildPostFxLayer(): void {
   postFxLayer.width = Math.floor(w * dpr);
   postFxLayer.height = Math.floor(h * dpr);
@@ -1376,6 +1670,7 @@ function rebuildCoinSprite(): void {
 
 function rebuildVisualLayers(): void {
   rebuildBackgroundLayer();
+  rebuildAmbientOrbs();
   rebuildPostFxLayer();
   rebuildBallSprites();
   rebuildCoinSprite();
@@ -1409,10 +1704,24 @@ function resizeCanvas(): void {
 let lastTime = 0;
 
 function gameLoop(timestamp: number): void {
-  const dt = timestamp - lastTime;
+  const dt = lastTime === 0 ? 16.6667 : timestamp - lastTime;
   lastTime = timestamp;
+  updateVisualFx(dt);
 
-  // Clear and draw background
+  let shakeX = 0;
+  let shakeY = 0;
+  if (shakeLife > 0) {
+    const t = shakeLife / 180;
+    const amp = shakeStrength * t;
+    shakeX = Math.sin(visualTime * 0.09) * amp;
+    shakeY = Math.cos(visualTime * 0.12) * amp * 0.55;
+  }
+
+  ctx.save();
+  if (shakeLife > 0) {
+    ctx.translate(shakeX, shakeY);
+  }
+
   drawBackground();
 
   if (gameState === "PLAYING") {
@@ -1452,6 +1761,7 @@ function gameLoop(timestamp: number): void {
     drawParticles();
   }
 
+  ctx.restore();
   drawPostFx();
   requestAnimationFrame(gameLoop);
 }
