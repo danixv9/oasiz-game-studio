@@ -409,6 +409,19 @@ const VEHICLES: VehicleType[] = [
 
 let canvas: HTMLCanvasElement;
 let ctx: CanvasRenderingContext2D;
+let viewW = 0;
+let viewH = 0;
+let dpr = 1;
+
+const postFxLayer = document.createElement("canvas");
+const postFxCtx = postFxLayer.getContext("2d")!;
+const grainTile = document.createElement("canvas");
+const grainCtx = grainTile.getContext("2d")!;
+let cachedPostFxW = 0;
+let cachedPostFxH = 0;
+let cachedPostFxDpr = 0;
+
+let shakePhase = 0;
 
 let gamePhase: GamePhase = "start";
 let score = 0;
@@ -670,9 +683,76 @@ function resizeCanvas(): void {
     h = window.innerHeight;
   }
   
-  canvas.width = w;
-  canvas.height = h;
+  configureCanvas(w, h);
+  rebuildPostFx();
   console.log("[resizeCanvas] Canvas:", w, "x", h);
+}
+
+function configureCanvas(width: number, height: number): void {
+  viewW = width;
+  viewH = height;
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+
+  canvas.style.width = width + "px";
+  canvas.style.height = height + "px";
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+}
+
+function rebuildPostFx(): void {
+  if (viewW <= 0 || viewH <= 0) return;
+  if (cachedPostFxW === viewW && cachedPostFxH === viewH && cachedPostFxDpr === dpr) return;
+
+  cachedPostFxW = viewW;
+  cachedPostFxH = viewH;
+  cachedPostFxDpr = dpr;
+
+  postFxLayer.width = Math.floor(viewW * dpr);
+  postFxLayer.height = Math.floor(viewH * dpr);
+  postFxCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  postFxCtx.clearRect(0, 0, viewW, viewH);
+
+  // Subtle scanlines
+  postFxCtx.save();
+  postFxCtx.globalAlpha = 0.05;
+  postFxCtx.fillStyle = "#000";
+  for (let y = 0; y < viewH; y += 4) {
+    postFxCtx.fillRect(0, y, viewW, 1);
+  }
+  postFxCtx.restore();
+
+  // Vignette
+  const vg = postFxCtx.createRadialGradient(
+    viewW * 0.5,
+    viewH * 0.45,
+    Math.min(viewW, viewH) * 0.2,
+    viewW * 0.5,
+    viewH * 0.45,
+    Math.max(viewW, viewH) * 0.95,
+  );
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(0.7, "rgba(0,0,0,0.18)");
+  vg.addColorStop(1, "rgba(0,0,0,0.42)");
+  postFxCtx.fillStyle = vg;
+  postFxCtx.fillRect(0, 0, viewW, viewH);
+
+  // Grain tile (generated once per resize)
+  const grainSize = Math.floor(160 * dpr);
+  grainTile.width = grainSize;
+  grainTile.height = grainSize;
+  grainCtx.setTransform(1, 0, 0, 1, 0, 0);
+  const img = grainCtx.createImageData(grainSize, grainSize);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.floor(Math.random() * 255);
+    img.data[i] = v;
+    img.data[i + 1] = v;
+    img.data[i + 2] = v;
+    img.data[i + 3] = Math.random() < 0.12 ? 22 : 0;
+  }
+  grainCtx.putImageData(img, 0, 0);
 }
 
 // ============================================================================
@@ -1939,12 +2019,129 @@ function updateScorePopups(dt: number): void {
 // RENDERING
 // ============================================================================
 
+function drawLightingPass(): void {
+  if (gamePhase === "start") return;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+
+  // Player headlights
+  if (player && (gamePhase === "playing" || gamePhase === "gameOver")) {
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.angle + Math.PI / 2 + player.driftAngle);
+    drawHeadlightConeLocal(player.width, player.height, 1.0);
+    ctx.restore();
+  }
+
+  // Police headlights + siren wash
+  for (const police of policeCars) {
+    if (Math.abs(police.x - camera.x) > w / 2 + 140) continue;
+    if (Math.abs(police.y - camera.y) > h / 2 + 140) continue;
+
+    ctx.save();
+    ctx.translate(police.x, police.y);
+    ctx.rotate(police.angle + Math.PI / 2);
+
+    const lightPhase = (gameTime * 0.015 + police.lightPhase) % (Math.PI * 2);
+    const isRed = Math.sin(lightPhase) > 0;
+    drawHeadlightConeLocal(police.width, police.height, 0.85);
+    drawSirenWashLocal(police.width, police.height, isRed);
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawHeadlightConeLocal(w2: number, h2: number, intensity: number): void {
+  // Local space: car faces -Y. Draw a soft cone forward from the front bumper.
+  const frontY = -h2 / 2;
+  const coneLen = 420;
+  const coneHalf = 170;
+
+  ctx.save();
+  ctx.globalAlpha = 0.18 * intensity;
+  ctx.fillStyle = "#FFF4C8";
+
+  // Outer glow blur
+  ctx.filter = "blur(14px)";
+  ctx.beginPath();
+  ctx.moveTo(-w2 * 0.22, frontY + 6);
+  ctx.lineTo(-coneHalf, frontY - coneLen);
+  ctx.lineTo(coneHalf, frontY - coneLen);
+  ctx.lineTo(w2 * 0.22, frontY + 6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner core
+  ctx.filter = "blur(0px)";
+  ctx.globalAlpha = 0.11 * intensity;
+  ctx.beginPath();
+  ctx.moveTo(-w2 * 0.18, frontY + 4);
+  ctx.lineTo(-coneHalf * 0.62, frontY - coneLen * 0.78);
+  ctx.lineTo(coneHalf * 0.62, frontY - coneLen * 0.78);
+  ctx.lineTo(w2 * 0.18, frontY + 4);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawSirenWashLocal(w2: number, h2: number, isRed: boolean): void {
+  const frontY = -h2 / 2;
+  const washLen = 320;
+  const washHalf = 150;
+  const color = isRed ? COLORS.policeLight1 : COLORS.policeLight2;
+
+  ctx.save();
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = color;
+  ctx.filter = "blur(10px)";
+  ctx.beginPath();
+  ctx.moveTo(-w2 * 0.26, frontY + 10);
+  ctx.lineTo(-washHalf, frontY - washLen);
+  ctx.lineTo(washHalf, frontY - washLen);
+  ctx.lineTo(w2 * 0.26, frontY + 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPostFx(): void {
+  if (postFxLayer.width <= 0 || postFxLayer.height <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.drawImage(postFxLayer, 0, 0, w, h);
+  ctx.restore();
+
+  // Film grain (tile)
+  if (grainTile.width > 0) {
+    const tileSize = grainTile.width / dpr;
+    const t = gameTime * 0.02;
+    const ox = -((t % tileSize) + tileSize);
+    const oy = -(((t * 0.65) % tileSize) + tileSize);
+
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    for (let x = ox; x < w + tileSize; x += tileSize) {
+      for (let y = oy; y < h + tileSize; y += tileSize) {
+        ctx.drawImage(grainTile, x, y, tileSize, tileSize);
+      }
+    }
+    ctx.restore();
+  }
+}
+
 function render(): void {
   ctx.save();
 
   if (screenShake > 0) {
-    const sx = (Math.random() - 0.5) * screenShake * 2;
-    const sy = (Math.random() - 0.5) * screenShake * 2;
+    // Deterministic shake (no Math.random in render loop)
+    shakePhase += 0.18;
+    const sx = (Math.sin(shakePhase * 1.7) + Math.sin(shakePhase * 3.9 + 1.2) * 0.55) * screenShake;
+    const sy = (Math.sin(shakePhase * 2.3 + 0.4) + Math.sin(shakePhase * 4.6 + 2.1) * 0.45) * screenShake;
     ctx.translate(sx, sy);
   }
 
@@ -1965,6 +2162,9 @@ function render(): void {
   if (gamePhase !== "start") {
     // Draw skid marks
     drawSkidMarks();
+
+    // Lighting underlay (headlights + siren wash)
+    drawLightingPass();
 
     // Draw drift smoke
     drawDriftSmoke();
@@ -1987,6 +2187,9 @@ function render(): void {
   }
 
   ctx.restore();
+
+  // Screen-space post FX behind UI
+  drawPostFx();
 
   // UI elements (only during gameplay)
   if (gamePhase !== "start") {
@@ -3608,7 +3811,7 @@ function drawScorePopups(): void {
     const alpha = 1 - progress;
 
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.translate(screenX, screenY);
     ctx.scale(scale, scale);
     ctx.globalAlpha = alpha;
@@ -3626,7 +3829,7 @@ function drawScorePopups(): void {
 
 function drawJoystick(): void {
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
   ctx.lineWidth = 3;
@@ -3653,7 +3856,7 @@ function drawJoystick(): void {
 
 function drawComboIndicator(): void {
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const comboProgress = Math.min(1, (gameTime - lastCrashTime) / COMBO_TIMEOUT);
   const barWidth = 150;
@@ -3684,7 +3887,7 @@ function drawMinimap(): void {
   if (!player) return;
   
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const mapSize = isMobile ? 100 : 140;
   const mapX = w - mapSize - 15;
