@@ -122,6 +122,23 @@ interface AmbientOrb {
   alpha: number;
 }
 
+interface VisualQualityProfile {
+  name: string;
+  dprCapMobile: number;
+  dprCapDesktop: number;
+  ambientOrbFactor: number;
+  grainAlpha: number;
+  grainResolution: number;
+  postFxAlpha: number;
+  postFxShiftAlpha: number;
+  bloomScale: number;
+  shadowBlurScale: number;
+  trailLength: number;
+  maxParticles: number;
+  particleGlow: boolean;
+  particleStreak: boolean;
+}
+
 interface Settings {
   sound: boolean;
 }
@@ -166,11 +183,41 @@ function hexToRgba(hex: string, alpha: number): string {
   return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
 }
 
+function resolveParticleSpawnCount(requested: number): number {
+  const remaining = activeQuality.maxParticles - particles.length;
+  if (remaining <= 0) return 0;
+  return Math.min(requested, remaining);
+}
+
+function setVisualQualityLevel(nextLevel: number): void {
+  const clampedLevel = Math.round(
+    clamp(nextLevel, 0, VISUAL_QUALITY_PROFILES.length - 1),
+  );
+  if (clampedLevel === qualityLevel) return;
+
+  qualityLevel = clampedLevel;
+  activeQuality = VISUAL_QUALITY_PROFILES[qualityLevel];
+  const previousDprCap = dprCap;
+  dprCap = isMobile ? activeQuality.dprCapMobile : activeQuality.dprCapDesktop;
+  console.log(
+    "[setVisualQualityLevel] Switched to:",
+    activeQuality.name,
+    "frameMs:",
+    frameMsSmoothed.toFixed(2),
+  );
+  if (Math.abs(previousDprCap - dprCap) > 0.001) {
+    resizeCanvas();
+  } else {
+    rebuildVisualLayers();
+  }
+}
+
 // ============= GLOBALS =============
 const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 const gameContainer = document.getElementById("game-container")!;
 let dpr = 1;
+let dprCap = 2;
 
 const backgroundLayer = document.createElement("canvas");
 const backgroundCtx = backgroundLayer.getContext("2d")!;
@@ -203,6 +250,59 @@ let gameState: GameState = "START";
 let w = gameContainer.clientWidth;
 let h = gameContainer.clientHeight;
 const isMobile = window.matchMedia("(pointer: coarse)").matches;
+const VISUAL_QUALITY_PROFILES: VisualQualityProfile[] = [
+  {
+    name: "performance",
+    dprCapMobile: 1.15,
+    dprCapDesktop: 1.45,
+    ambientOrbFactor: 0.48,
+    grainAlpha: 0.026,
+    grainResolution: 72,
+    postFxAlpha: 0.66,
+    postFxShiftAlpha: 0,
+    bloomScale: 0.6,
+    shadowBlurScale: 0.48,
+    trailLength: 6,
+    maxParticles: 60,
+    particleGlow: false,
+    particleStreak: false,
+  },
+  {
+    name: "balanced",
+    dprCapMobile: 1.4,
+    dprCapDesktop: 1.8,
+    ambientOrbFactor: 0.74,
+    grainAlpha: 0.038,
+    grainResolution: 96,
+    postFxAlpha: 0.8,
+    postFxShiftAlpha: 0.08,
+    bloomScale: 0.82,
+    shadowBlurScale: 0.72,
+    trailLength: 8,
+    maxParticles: 96,
+    particleGlow: true,
+    particleStreak: true,
+  },
+  {
+    name: "cinematic",
+    dprCapMobile: 1.75,
+    dprCapDesktop: 2,
+    ambientOrbFactor: 1,
+    grainAlpha: 0.05,
+    grainResolution: 128,
+    postFxAlpha: 0.9,
+    postFxShiftAlpha: 0.12,
+    bloomScale: 1,
+    shadowBlurScale: 1,
+    trailLength: CONFIG.TRAIL_LENGTH,
+    maxParticles: 140,
+    particleGlow: true,
+    particleStreak: true,
+  },
+];
+let qualityLevel = isMobile ? 1 : 2;
+let activeQuality = VISUAL_QUALITY_PROFILES[qualityLevel];
+dprCap = isMobile ? activeQuality.dprCapMobile : activeQuality.dprCapDesktop;
 
 // Game objects
 let paddleX = w / 2;
@@ -233,6 +333,9 @@ let bloomIntensity = 0;
 let shakeLife = 0;
 let shakeStrength = 0;
 let ambientOrbs: AmbientOrb[] = [];
+let frameMsSmoothed = 16.6667;
+let qualityEvalTimer = 0;
+let qualityCooldown = 0;
 
 // Score
 let score = 0;
@@ -311,7 +414,14 @@ function drawBackground(): void {
       const x = orb.x + Math.sin(time * orb.drift + orb.phase) * orb.radius * 3.2;
       const y =
         ((orb.y + time * orb.speed) % (h + orb.radius * 2)) - orb.radius;
-      const glow = ctx.createRadialGradient(x, y, 0, x, y, orb.radius * 7.5);
+      const glow = ctx.createRadialGradient(
+        x,
+        y,
+        0,
+        x,
+        y,
+        orb.radius * (6.2 + activeQuality.ambientOrbFactor * 1.4),
+      );
       glow.addColorStop(0, hexToRgba(accentColor, orb.alpha));
       glow.addColorStop(0.45, hexToRgba(accentColor, orb.alpha * 0.3));
       glow.addColorStop(1, "rgba(255,255,255,0)");
@@ -334,10 +444,22 @@ function drawBackground(): void {
       CONFIG.BALL_RADIUS * 0.5,
       ballX,
       ballY,
-      Math.max(w, h) * (0.35 + speedEnergy * 0.3),
+      Math.max(w, h) * (0.32 + speedEnergy * 0.26 * activeQuality.bloomScale),
     );
-    field.addColorStop(0, hexToRgba(accentColor, 0.22 + speedEnergy * 0.3));
-    field.addColorStop(0.5, hexToRgba(accentColor, 0.08 + speedEnergy * 0.12));
+    field.addColorStop(
+      0,
+      hexToRgba(
+        accentColor,
+        (0.18 + speedEnergy * 0.24) * (0.8 + activeQuality.bloomScale * 0.25),
+      ),
+    );
+    field.addColorStop(
+      0.5,
+      hexToRgba(
+        accentColor,
+        (0.07 + speedEnergy * 0.11) * (0.8 + activeQuality.bloomScale * 0.25),
+      ),
+    );
     field.addColorStop(1, "rgba(255,255,255,0)");
     ctx.save();
     ctx.globalCompositeOperation = "screen";
@@ -352,7 +474,7 @@ function drawBackground(): void {
     const ox = -((t % tileSize) + tileSize);
     const oy = -(((t * 0.65) % tileSize) + tileSize);
     ctx.save();
-    ctx.globalAlpha = 0.05;
+    ctx.globalAlpha = activeQuality.grainAlpha;
     for (let x = ox; x < w + tileSize; x += tileSize) {
       for (let y = oy; y < h + tileSize; y += tileSize) {
         ctx.drawImage(grainTile, x, y, tileSize, tileSize);
@@ -396,7 +518,7 @@ function drawPaddle(): void {
   ctx.globalAlpha = 0.22 + speedEnergy * 0.2;
   ctx.fillStyle = hexToRgba(accentColor, 0.42);
   ctx.shadowColor = accentColor;
-  ctx.shadowBlur = 24 + speedEnergy * 18;
+  ctx.shadowBlur = (24 + speedEnergy * 18) * activeQuality.shadowBlurScale;
   ctx.beginPath();
   ctx.ellipse(
     px,
@@ -486,11 +608,14 @@ function drawBall(): void {
   const speed = Math.hypot(ballVX, ballVY);
   const speedEnergy = clamp(speed / 26, 0, 1);
   const shadowT = clamp((ballY / h) * 1.2, 0.15, 1);
+  const shadowBlur = CONFIG.BALL_SHADOW_SOFTNESS * shadowT * activeQuality.shadowBlurScale;
 
   ctx.save();
-  ctx.globalAlpha = 0.14 * shadowT;
+  ctx.globalAlpha = 0.14 * shadowT * (0.82 + activeQuality.shadowBlurScale * 0.25);
   ctx.fillStyle = "#000";
-  ctx.filter = "blur(" + (CONFIG.BALL_SHADOW_SOFTNESS * shadowT).toFixed(1) + "px)";
+  if (shadowBlur > 8) {
+    ctx.filter = "blur(" + shadowBlur.toFixed(1) + "px)";
+  }
   ctx.beginPath();
   ctx.ellipse(
     ballX + ballVX * 0.2,
@@ -502,14 +627,17 @@ function drawBall(): void {
     Math.PI * 2,
   );
   ctx.fill();
-  ctx.filter = "none";
+  if (shadowBlur > 8) {
+    ctx.filter = "none";
+  }
   ctx.restore();
 
   for (let i = 0; i < ballTrail.length; i++) {
     const t = ballTrail[i];
     const glowSize = CONFIG.BALL_RADIUS * (3.8 + i * 0.15);
     ctx.save();
-    ctx.globalAlpha = t.alpha * (0.14 + speedEnergy * 0.25);
+    ctx.globalAlpha =
+      t.alpha * (0.14 + speedEnergy * 0.25) * (0.78 + activeQuality.bloomScale * 0.24);
     ctx.drawImage(
       ballGlowSprite,
       t.x - glowSize / 2 - ballVX * 0.12,
@@ -533,10 +661,23 @@ function drawBall(): void {
   ctx.restore();
 
   if (bloomIntensity > 0) {
-    const bloomR = CONFIG.BALL_RADIUS * (3.4 + bloomIntensity * 1.6);
+    const bloomR =
+      CONFIG.BALL_RADIUS *
+      (3 + bloomIntensity * (1.3 + activeQuality.bloomScale * 0.25));
     const bloom = ctx.createRadialGradient(ballX, ballY, 0, ballX, ballY, bloomR);
-    bloom.addColorStop(0, "rgba(255,255,255," + (0.35 + bloomIntensity * 0.28) + ")");
-    bloom.addColorStop(0.5, hexToRgba(accentColor, 0.26 + bloomIntensity * 0.2));
+    bloom.addColorStop(
+      0,
+      "rgba(255,255,255," +
+        ((0.28 + bloomIntensity * 0.24) * (0.75 + activeQuality.bloomScale * 0.3)) +
+        ")",
+    );
+    bloom.addColorStop(
+      0.5,
+      hexToRgba(
+        accentColor,
+        (0.2 + bloomIntensity * 0.18) * (0.75 + activeQuality.bloomScale * 0.3),
+      ),
+    );
     bloom.addColorStop(1, "rgba(255,255,255,0)");
     ctx.save();
     ctx.globalCompositeOperation = "screen";
@@ -577,27 +718,32 @@ function drawParticles(): void {
     const trailX = p.x - p.vx * 1.3;
     const trailY = p.y - p.vy * 1.3;
 
-    ctx.save();
-    ctx.globalAlpha = alpha * 0.8;
-    ctx.strokeStyle = hexToRgba(accentColor, 0.3 + p.hueShift * 0.5);
-    ctx.lineWidth = Math.max(1, radius * 0.3);
-    ctx.beginPath();
-    ctx.moveTo(trailX, trailY);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-    ctx.restore();
+    if (activeQuality.particleStreak) {
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.strokeStyle = hexToRgba(accentColor, 0.3 + p.hueShift * 0.5);
+      ctx.lineWidth = Math.max(1, radius * 0.3);
+      ctx.beginPath();
+      ctx.moveTo(trailX, trailY);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius + p.glow);
-    glow.addColorStop(0, "rgba(255,255,255," + (0.55 * alpha) + ")");
-    glow.addColorStop(0.45, hexToRgba(accentColor, (0.4 + p.hueShift * 0.35) * alpha));
-    glow.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = glow;
-    ctx.fillRect(
-      p.x - (radius + p.glow),
-      p.y - (radius + p.glow),
-      (radius + p.glow) * 2,
-      (radius + p.glow) * 2,
-    );
+    if (activeQuality.particleGlow) {
+      const glowSize = radius + p.glow * activeQuality.bloomScale;
+      const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowSize);
+      glow.addColorStop(0, "rgba(255,255,255," + (0.55 * alpha) + ")");
+      glow.addColorStop(0.45, hexToRgba(accentColor, (0.4 + p.hueShift * 0.35) * alpha));
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(
+        p.x - glowSize,
+        p.y - glowSize,
+        glowSize * 2,
+        glowSize * 2,
+      );
+    }
 
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
@@ -649,7 +795,7 @@ function drawHitPulse(): void {
   ctx.globalAlpha = alpha;
   ctx.strokeStyle = accentColor;
   ctx.shadowColor = accentColor;
-  ctx.shadowBlur = 26;
+  ctx.shadowBlur = 26 * activeQuality.shadowBlurScale;
   ctx.lineWidth = Math.max(2, 6 * (1 - t));
   ctx.beginPath();
   ctx.arc(hitPulseX, hitPulseY, radius, 0, Math.PI * 2);
@@ -665,7 +811,7 @@ function drawHitPulse(): void {
 
 function drawPostFx(): void {
   ctx.save();
-  ctx.globalAlpha = 0.9;
+  ctx.globalAlpha = activeQuality.postFxAlpha;
   ctx.drawImage(postFxLayer, 0, 0, w, h);
 
   if (bloomIntensity > 0 || hitPulseLife > 0) {
@@ -676,20 +822,23 @@ function drawPostFx(): void {
       CONFIG.BALL_RADIUS * 0.5,
       ballX,
       ballY,
-      Math.max(w, h) * (0.2 + ring * 0.12),
+      Math.max(w, h) * (0.2 + ring * 0.12 * activeQuality.bloomScale),
     );
-    bloom.addColorStop(0, "rgba(255,255,255,0.28)");
-    bloom.addColorStop(0.35, hexToRgba(accentColor, 0.2 + ring * 0.15));
+    bloom.addColorStop(0, "rgba(255,255,255," + (0.2 + activeQuality.bloomScale * 0.12) + ")");
+    bloom.addColorStop(
+      0.35,
+      hexToRgba(accentColor, (0.16 + ring * 0.12) * (0.7 + activeQuality.bloomScale * 0.3)),
+    );
     bloom.addColorStop(1, "rgba(255,255,255,0)");
     ctx.globalCompositeOperation = "screen";
     ctx.fillStyle = bloom;
     ctx.fillRect(0, 0, w, h);
   }
 
-  if (hitPulseLife > 0) {
+  if (hitPulseLife > 0 && activeQuality.postFxShiftAlpha > 0) {
     const amount = clamp(hitPulseLife / 220, 0, 1);
     ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = 0.12 * amount;
+    ctx.globalAlpha = activeQuality.postFxShiftAlpha * amount;
     ctx.drawImage(postFxLayer, -2 * amount, 0, w, h);
     ctx.drawImage(postFxLayer, 2 * amount, 0, w, h);
   }
@@ -698,8 +847,25 @@ function drawPostFx(): void {
 
 function updateVisualFx(dt: number): void {
   visualTime += dt;
+  frameMsSmoothed = lerp(frameMsSmoothed, clamp(dt, 10, 42), 0.12);
+  qualityEvalTimer += dt;
+  if (qualityCooldown > 0) {
+    qualityCooldown -= dt;
+  }
+
+  if (qualityEvalTimer >= 850 && qualityCooldown <= 0) {
+    qualityEvalTimer = 0;
+    if (frameMsSmoothed > 21 && qualityLevel > 0) {
+      setVisualQualityLevel(qualityLevel - 1);
+      qualityCooldown = 1200;
+    } else if (frameMsSmoothed < 15.4 && qualityLevel < VISUAL_QUALITY_PROFILES.length - 1) {
+      setVisualQualityLevel(qualityLevel + 1);
+      qualityCooldown = 1800;
+    }
+  }
+
   ballSpeedSmoothed = lerp(ballSpeedSmoothed, Math.hypot(ballVX, ballVY), 0.16);
-  bloomIntensity = Math.max(0, bloomIntensity - dt * 0.0018);
+  bloomIntensity = Math.max(0, bloomIntensity - dt * (0.0015 + (1 - activeQuality.bloomScale) * 0.001));
   if (shakeLife > 0) {
     shakeLife -= dt;
     if (shakeLife < 0) shakeLife = 0;
@@ -749,9 +915,10 @@ function resetGame(): void {
 }
 
 function spawnParticles(x: number, y: number): void {
-  for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+  const particleCount = resolveParticleSpawnCount(CONFIG.PARTICLE_COUNT);
+  for (let i = 0; i < particleCount; i++) {
     const angle =
-      (Math.PI * 2 * i) / CONFIG.PARTICLE_COUNT + Math.random() * 0.5;
+      (Math.PI * 2 * i) / Math.max(1, particleCount) + Math.random() * 0.5;
     const speed = 2 + Math.random() * 4;
     particles.push({
       x,
@@ -903,7 +1070,8 @@ function collectCoin(coin: Coin): void {
   }
 
   // Visual feedback (particles)
-  for (let i = 0; i < 12; i++) {
+  const particleCount = resolveParticleSpawnCount(12);
+  for (let i = 0; i < particleCount; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 2 + Math.random() * 4;
     particles.push({
@@ -982,7 +1150,7 @@ function handlePaddleHit(): void {
 
 function updateBall(): void {
   ballTrail.unshift({ x: ballX, y: ballY, alpha: 1 });
-  if (ballTrail.length > CONFIG.TRAIL_LENGTH) {
+  if (ballTrail.length > activeQuality.trailLength) {
     ballTrail.pop();
   }
   for (const t of ballTrail) {
@@ -1161,8 +1329,10 @@ function updateBall(): void {
     hitPulseY = ellipseSurfaceY;
     hitPulseLife = 220;
     hitPulseStrength = isCenterZone ? 1 : 0.75;
-    for (let i = 0; i < particleCount; i++) {
-      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
+    const clampedParticleCount = resolveParticleSpawnCount(particleCount);
+    for (let i = 0; i < clampedParticleCount; i++) {
+      const angle =
+        (Math.PI * 2 * i) / Math.max(1, clampedParticleCount) + Math.random() * 0.5;
       const speed = isCenterZone
         ? 4 + Math.random() * 6
         : 2 + Math.random() * 4;
@@ -1524,7 +1694,7 @@ function rebuildBackgroundLayer(): void {
   }
   backgroundCtx.restore();
 
-  const grainSize = Math.floor(128 * dpr);
+  const grainSize = Math.floor(activeQuality.grainResolution * dpr);
   grainTile.width = grainSize;
   grainTile.height = grainSize;
   grainCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1541,9 +1711,10 @@ function rebuildBackgroundLayer(): void {
 
 function rebuildAmbientOrbs(): void {
   ambientOrbs = [];
+  const baseCount = Math.floor(CONFIG.AMBIENT_ORB_COUNT * (Math.min(w, h) / 700));
   const count = Math.max(
-    12,
-    Math.floor(CONFIG.AMBIENT_ORB_COUNT * (Math.min(w, h) / 700)),
+    8,
+    Math.floor(baseCount * activeQuality.ambientOrbFactor),
   );
   for (let i = 0; i < count; i++) {
     ambientOrbs.push({
@@ -1565,9 +1736,10 @@ function rebuildPostFxLayer(): void {
   postFxCtx.clearRect(0, 0, w, h);
 
   postFxCtx.save();
-  postFxCtx.globalAlpha = 0.045;
+  postFxCtx.globalAlpha = 0.045 * (0.75 + activeQuality.postFxAlpha * 0.35);
   postFxCtx.fillStyle = "#000";
-  for (let y = 0; y < h; y += 4) {
+  const scanStep = activeQuality.postFxAlpha < 0.7 ? 6 : 4;
+  for (let y = 0; y < h; y += scanStep) {
     postFxCtx.fillRect(0, y, w, 1);
   }
   postFxCtx.restore();
@@ -1680,7 +1852,7 @@ function rebuildVisualLayers(): void {
 function resizeCanvas(): void {
   w = gameContainer.clientWidth;
   h = gameContainer.clientHeight;
-  dpr = Math.min(2, window.devicePixelRatio || 1);
+  dpr = Math.min(dprCap, window.devicePixelRatio || 1);
   canvas.style.width = w + "px";
   canvas.style.height = h + "px";
   canvas.width = Math.floor(w * dpr);
@@ -1712,7 +1884,7 @@ function gameLoop(timestamp: number): void {
   let shakeY = 0;
   if (shakeLife > 0) {
     const t = shakeLife / 180;
-    const amp = shakeStrength * t;
+    const amp = shakeStrength * t * (0.78 + activeQuality.bloomScale * 0.22);
     shakeX = Math.sin(visualTime * 0.09) * amp;
     shakeY = Math.cos(visualTime * 0.12) * amp * 0.55;
   }
