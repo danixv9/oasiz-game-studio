@@ -128,20 +128,13 @@ function directionToVector(dir: Direction): Position {
   return vectors[dir];
 }
 
-type OasizSettings = {
-  music?: boolean;
-  fx?: boolean;
-  haptics?: boolean;
-};
-
-function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
-  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
-  return {
-    music: raw?.music !== false,
-    fx: raw?.fx !== false,
-    haptics: raw?.haptics !== false,
-  };
+interface GameSettings {
+  music: boolean;
+  fx: boolean;
+  haptics: boolean;
 }
+
+const SETTINGS_STORAGE_KEY = "pacman_settings";
 
 // ============= SOUND MANAGER =============
 class SoundManager {
@@ -150,6 +143,8 @@ class SoundManager {
   private muted: boolean = false;
   private musicVolume: number = 0.3;
   private sfxVolume: number = 0.5;
+  private musicEnabled: boolean = true;
+  private fxEnabled: boolean = true;
   private sirenAudio: HTMLAudioElement | null = null;
   private sirenPlaying: boolean = false;
   
@@ -163,6 +158,7 @@ class SoundManager {
     this.loadSound("fruit", audioBase + "pacman_eatfruit.wav");
     this.loadSound("intro", audioBase + "pacman_beginning.wav");
     this.loadSound("extra-life", audioBase + "pacman_extrapac.wav");
+    this.loadSound("bgm", audioBase + "game-music.mp3");
   }
   
   private loadSound(name: string, path: string): void {
@@ -172,7 +168,7 @@ class SoundManager {
   }
   
   play(name: string): void {
-    if (this.muted || !getOasizSettings().fx) return;
+    if (this.muted || !this.fxEnabled) return;
     const sound = this.sounds.get(name);
     if (sound) {
       sound.currentTime = 0;
@@ -183,7 +179,7 @@ class SoundManager {
   
   playMusic(name: string, loop: boolean = true): void {
     if (this.musicPlaying === name) return;
-    if (!getOasizSettings().music) return;
+    if (!this.musicEnabled) return;
      
     // Stop current music
     this.stopMusic();
@@ -208,10 +204,21 @@ class SoundManager {
       this.musicPlaying = null;
     }
   }
+
+  setMusicEnabled(enabled: boolean): void {
+    this.musicEnabled = enabled;
+    if (!enabled) {
+      this.stopMusic();
+    }
+  }
+
+  setFxEnabled(enabled: boolean): void {
+    this.fxEnabled = enabled;
+  }
   
   // Play the waka sound with proper timing (original arcade plays it on each pellet)
   playWaka(): void {
-    if (this.muted || !getOasizSettings().fx) return;
+    if (this.muted || !this.fxEnabled) return;
     const sound = this.sounds.get("waka");
     if (sound) {
       // Only play if not already playing (prevent overlap spam)
@@ -257,7 +264,6 @@ class PacmanGame {
   // Game state
   private gameState: GameState = "menu";
   private score: number = 0;
-  private highScore: number = 0;
   private lives: number = 3;
   private level: number = 1;
   private dotsRemaining: number = 0;
@@ -298,7 +304,6 @@ class PacmanGame {
   // UI Elements
   private hudElement: HTMLElement;
   private scoreElement: HTMLElement;
-  private highScoreElement: HTMLElement;
   private levelElement: HTMLElement;
   private livesDisplay: HTMLElement;
   private startScreen: HTMLElement;
@@ -306,10 +311,25 @@ class PacmanGame {
   private pauseOverlay: HTMLElement;
   private readyText: HTMLElement;
   private dpad: HTMLElement;
+  private settingsButton: HTMLButtonElement;
+  private pauseButton: HTMLButtonElement;
+  private settingsModal: HTMLElement;
+  private settingsCloseButton: HTMLButtonElement;
+  private musicToggle: HTMLButtonElement;
+  private fxToggle: HTMLButtonElement;
+  private hapticsToggle: HTMLButtonElement;
+  private settings: GameSettings;
   
   // Touch tracking
   private touchStartX: number = 0;
   private touchStartY: number = 0;
+
+  private triggerHaptic(type: "light" | "medium" | "heavy" | "success" | "error"): void {
+    if (!this.settings.haptics) return;
+    if (typeof (window as any).triggerHaptic === "function") {
+      (window as any).triggerHaptic(type);
+    }
+  }
 
   constructor() {
     console.log("[PacmanGame] Initializing game");
@@ -317,6 +337,7 @@ class PacmanGame {
     this.canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
     this.ctx = this.canvas.getContext("2d")!;
     this.isMobile = window.matchMedia("(pointer: coarse)").matches;
+    this.settings = this.loadSettings();
     this.soundManager = new SoundManager();
     this.mazeLayer = document.createElement("canvas");
     this.mazeLayerCtx = this.mazeLayer.getContext("2d")!;
@@ -324,7 +345,6 @@ class PacmanGame {
     // Get UI elements
     this.hudElement = document.getElementById("hud")!;
     this.scoreElement = document.getElementById("score")!;
-    this.highScoreElement = document.getElementById("highScore")!;
     this.levelElement = document.getElementById("level")!;
     this.livesDisplay = document.getElementById("livesDisplay")!;
     this.startScreen = document.getElementById("startScreen")!;
@@ -332,9 +352,16 @@ class PacmanGame {
     this.pauseOverlay = document.getElementById("pauseOverlay")!;
     this.readyText = document.getElementById("readyText")!;
     this.dpad = document.getElementById("dpad")!;
-    
-    // Load high score
-    this.highScore = parseInt(localStorage.getItem("pacmanHighScore") || "0", 10);
+    this.settingsButton = document.getElementById("settingsBtn") as HTMLButtonElement;
+    this.pauseButton = document.getElementById("pauseBtn") as HTMLButtonElement;
+    this.settingsModal = document.getElementById("settingsModal")!;
+    this.settingsCloseButton = document.getElementById("settingsClose") as HTMLButtonElement;
+    this.musicToggle = document.getElementById("musicToggle") as HTMLButtonElement;
+    this.fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
+    this.hapticsToggle = document.getElementById("hapticsToggle") as HTMLButtonElement;
+
+    this.applySettings();
+    this.updateSettingsUI();
     
     // Initialize
     this.initMaze();
@@ -344,10 +371,87 @@ class PacmanGame {
     
     // Hide d-pad initially (will show when game starts)
     this.dpad.classList.add("hidden");
+    this.setGameplayButtonsVisible(false);
     
     // Start game loop
     this.lastTime = performance.now();
     requestAnimationFrame((t) => this.gameLoop(t));
+  }
+
+  private loadSettings(): GameSettings {
+    const defaults: GameSettings = { music: true, fx: true, haptics: true };
+    const injected = (window as any).__OASIZ_SETTINGS__ as Partial<GameSettings> | undefined;
+    const base: GameSettings = {
+      music: injected?.music !== false,
+      fx: injected?.fx !== false,
+      haptics: injected?.haptics !== false,
+    };
+
+    try {
+      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (!stored) return base;
+      const parsed = JSON.parse(stored) as Partial<GameSettings>;
+      return {
+        music: parsed.music ?? base.music ?? defaults.music,
+        fx: parsed.fx ?? base.fx ?? defaults.fx,
+        haptics: parsed.haptics ?? base.haptics ?? defaults.haptics,
+      };
+    } catch {
+      return base;
+    }
+  }
+
+  private saveSettings(): void {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(this.settings));
+  }
+
+  private applySettings(): void {
+    this.soundManager.setMusicEnabled(this.settings.music);
+    this.soundManager.setFxEnabled(this.settings.fx);
+  }
+
+  private updateSettingsUI(): void {
+    const setToggle = (button: HTMLButtonElement, enabled: boolean): void => {
+      button.textContent = enabled ? "ON" : "OFF";
+      button.classList.toggle("active", enabled);
+    };
+    setToggle(this.musicToggle, this.settings.music);
+    setToggle(this.fxToggle, this.settings.fx);
+    setToggle(this.hapticsToggle, this.settings.haptics);
+  }
+
+  private toggleSetting(key: keyof GameSettings): void {
+    this.settings[key] = !this.settings[key];
+    this.saveSettings();
+    this.applySettings();
+    this.updateSettingsUI();
+    if (this.settings.haptics) {
+      this.triggerHaptic("light");
+    }
+
+    if (key === "music") {
+      if (this.settings.music && this.gameState === "playing") {
+        this.soundManager.playMusic("bgm");
+      } else if (!this.settings.music) {
+        this.soundManager.stopMusic();
+      }
+    }
+  }
+
+  private openSettings(): void {
+    this.settingsModal.classList.remove("hidden");
+  }
+
+  private closeSettings(): void {
+    this.settingsModal.classList.add("hidden");
+  }
+
+  private setGameplayButtonsVisible(visible: boolean): void {
+    this.settingsButton.classList.toggle("hidden", !visible);
+    this.pauseButton.classList.toggle("hidden", !visible);
+    if (!visible) {
+      this.closeSettings();
+    }
   }
 
   private initMaze(): void {
@@ -385,7 +489,7 @@ class PacmanGame {
     
     if (this.isMobile) {
       // Mobile layout: game fills most of screen, HUD above, d-pad below
-      const safeAreaTop = 110; // Pushed down even more to clear system buttons
+      const safeAreaTop = 120;
       const dpadHeight = 140;  // Slightly more compact D-pad area
       const hudHeight = 40;    // More compact HUD
       const padding = 5;       // Reduced padding
@@ -638,16 +742,49 @@ class PacmanGame {
     
     // Start button
     document.getElementById("startButton")!.addEventListener("click", () => {
+      this.triggerHaptic("light");
       this.startGame();
     });
     
     // Restart button
     document.getElementById("restartButton")!.addEventListener("click", () => {
+      this.triggerHaptic("light");
       this.restartGame();
+    });
+
+    this.pauseButton.addEventListener("click", () => {
+      this.triggerHaptic("light");
+      this.togglePause();
+    });
+
+    this.settingsButton.addEventListener("click", () => {
+      this.triggerHaptic("light");
+      this.openSettings();
+    });
+
+    this.settingsCloseButton.addEventListener("click", () => {
+      this.triggerHaptic("light");
+      this.closeSettings();
+    });
+
+    this.musicToggle.addEventListener("click", () => this.toggleSetting("music"));
+    this.fxToggle.addEventListener("click", () => this.toggleSetting("fx"));
+    this.hapticsToggle.addEventListener("click", () => this.toggleSetting("haptics"));
+
+    this.settingsModal.addEventListener("click", (event) => {
+      if (event.target === this.settingsModal) {
+        this.closeSettings();
+      }
     });
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
+    if (e.key === "Escape" && !this.settingsModal.classList.contains("hidden")) {
+      this.closeSettings();
+      e.preventDefault();
+      return;
+    }
+
     // Direction keys
     const keyMap: Record<string, Direction> = {
       ArrowUp: "up",
@@ -721,6 +858,9 @@ class PacmanGame {
     this.soundManager.play("intro");
     this.startScreen.classList.add("hidden");
     this.gameOverScreen.classList.add("hidden");
+    this.pauseOverlay.classList.add("hidden");
+    this.closeSettings();
+    this.setGameplayButtonsVisible(true);
     this.hudElement.style.display = "flex";
     
     this.score = 0;
@@ -762,9 +902,11 @@ class PacmanGame {
     if (this.gameState === "playing") {
       this.gameState = "paused";
       this.pauseOverlay.classList.remove("hidden");
+      this.soundManager.stopMusic();
     } else if (this.gameState === "paused") {
       this.gameState = "playing";
       this.pauseOverlay.classList.add("hidden");
+      this.soundManager.playMusic("bgm");
     }
   }
 
@@ -796,6 +938,7 @@ class PacmanGame {
       if (this.readyTimer <= 0) {
         this.readyText.classList.remove("show");
         this.gameState = "playing";
+        this.soundManager.playMusic("bgm");
       }
       return;
     }
@@ -979,6 +1122,7 @@ class PacmanGame {
   private eatGhost(ghost: Ghost): void {
     console.log("[eatGhost] Eating ghost:", ghost.name);
     this.soundManager.play("ghost-eat");
+    this.triggerHaptic("medium");
     const points = CONFIG.GHOST_POINTS[Math.min(this.ghostCombo, 3)];
     this.addScore(points);
     this.ghostCombo++;
@@ -990,6 +1134,7 @@ class PacmanGame {
     console.log("[pacmanDeath] Pacman died");
     this.soundManager.stopMusic();
     this.soundManager.play("death");
+    this.triggerHaptic("error");
     this.gameState = "dying";
     this.deathTimer = 1500;
     this.pacman.startDeathAnimation();
@@ -999,11 +1144,6 @@ class PacmanGame {
     console.log("[levelComplete] Level completed");
     this.gameState = "levelcomplete";
     this.levelCompleteTimer = 2000;
-
-    // Submit intermediate score on level completion
-    if (typeof (window as any).submitScore === "function") {
-      (window as any).submitScore(this.score);
-    }
   }
 
   private nextLevel(): void {
@@ -1020,16 +1160,12 @@ class PacmanGame {
     this.soundManager.stopMusic();
     this.gameState = "gameover";
     this.hideDpad();
+    this.setGameplayButtonsVisible(false);
+    this.triggerHaptic("error");
     
     // Submit score
     if (typeof (window as any).submitScore === "function") {
       (window as any).submitScore(this.score);
-    }
-    
-    // Update high score
-    if (this.score > this.highScore) {
-      this.highScore = this.score;
-      localStorage.setItem("pacmanHighScore", this.highScore.toString());
     }
     
     // Show game over screen
@@ -1038,13 +1174,6 @@ class PacmanGame {
     document.getElementById("dotsEaten")!.textContent = this.dotsEaten.toString();
     document.getElementById("ghostsEaten")!.textContent = this.ghostsEaten.toString();
     document.getElementById("maxLevel")!.textContent = this.level.toString();
-    
-    const newHighScoreEl = document.getElementById("newHighScore")!;
-    if (this.score >= this.highScore && this.score > 0) {
-      newHighScoreEl.classList.add("show");
-    } else {
-      newHighScoreEl.classList.remove("show");
-    }
     
     this.gameOverScreen.classList.remove("hidden");
   }
@@ -1056,7 +1185,6 @@ class PacmanGame {
 
   private updateHUD(): void {
     this.scoreElement.textContent = this.score.toString().padStart(2, "0");
-    this.highScoreElement.textContent = Math.max(this.score, this.highScore).toString().padStart(2, "0");
     this.levelElement.textContent = this.level.toString();
     
     // Update lives display

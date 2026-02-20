@@ -77,6 +77,39 @@ const BLOCK_SHAPES: { cells: [number, number][]; weight: number }[] = [
   { cells: [[0, 0], [0, 1], [1, 0]], weight: 8 },
 ];
 
+interface GameSettings {
+  music: boolean;
+  fx: boolean;
+  haptics: boolean;
+}
+
+const SETTINGS_STORAGE_KEY = "block_blast_settings";
+
+function readInitialSettings(): GameSettings {
+  const defaults: GameSettings = { music: true, fx: true, haptics: true };
+  const injected = (window as any).__OASIZ_SETTINGS__ as Partial<GameSettings> | undefined;
+  const base: GameSettings = {
+    music: injected?.music !== false,
+    fx: injected?.fx !== false,
+    haptics: injected?.haptics !== false,
+  };
+
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return base;
+    const parsed = JSON.parse(raw) as Partial<GameSettings>;
+    return {
+      music: parsed.music ?? base.music ?? defaults.music,
+      fx: parsed.fx ?? base.fx ?? defaults.fx,
+      haptics: parsed.haptics ?? base.haptics ?? defaults.haptics,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+let runtimeSettings: GameSettings = readInitialSettings();
+
 // ============= UTILITY =============
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
 function clamp(v: number, min: number, max: number): number { return Math.max(min, Math.min(max, v)); }
@@ -102,6 +135,7 @@ function weightedRandom<T extends { weight: number }>(items: T[]): T {
 }
 
 function triggerHaptic(type: string): void {
+  if (!runtimeSettings.haptics) return;
   try { (window as any).triggerHaptic?.(type); } catch {}
 }
 
@@ -476,7 +510,6 @@ interface GameState {
   grid: (number | null)[][];
   blockQueue: BlockPiece[];
   score: number;
-  highScore: number;
   linesCleared: number;
   blocksPlaced: number;
   combo: number;
@@ -507,6 +540,8 @@ class AudioManager {
   private buffersLoaded = false;
   private pendingMusic: "menu" | "game" | "gameover" | null = null;
   private megaClearNoiseBuffer: AudioBuffer | null = null;
+  private musicEnabled = runtimeSettings.music;
+  private fxEnabled = runtimeSettings.fx;
 
   init(): void {
     if (this.initialized) return;
@@ -520,10 +555,10 @@ class AudioManager {
       this.masterGain.gain.value = 0.5;
       this.masterGain.connect(this.ctx.destination);
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = 0.4;
+      this.musicGain.gain.value = this.musicEnabled ? 0.4 : 0;
       this.musicGain.connect(this.masterGain);
       this.sfxGain = this.ctx.createGain();
-      this.sfxGain.gain.value = 0.6;
+      this.sfxGain.gain.value = this.fxEnabled ? 0.6 : 0;
       this.sfxGain.connect(this.masterGain);
       this.initialized = true;
       this.loadMusicBuffers();
@@ -533,6 +568,24 @@ class AudioManager {
   ensureResumed(): void {
     if (this.ctx && this.ctx.state === "suspended") {
       this.ctx.resume();
+    }
+  }
+
+  setMusicEnabled(enabled: boolean): void {
+    this.musicEnabled = enabled;
+    if (this.musicGain && this.ctx) {
+      this.musicGain.gain.setValueAtTime(enabled ? 0.4 : 0, this.ctx.currentTime);
+    }
+    if (!enabled) {
+      this.pendingMusic = null;
+      this.stopMusic();
+    }
+  }
+
+  setFxEnabled(enabled: boolean): void {
+    this.fxEnabled = enabled;
+    if (this.sfxGain && this.ctx) {
+      this.sfxGain.gain.setValueAtTime(enabled ? 0.6 : 0, this.ctx.currentTime);
     }
   }
 
@@ -588,7 +641,7 @@ class AudioManager {
   }
 
   private playBuffer(buf: AudioBuffer | null, loop = true, speed = 1): void {
-    if (!this.ctx || !this.musicGain || !buf) return;
+    if (!this.musicEnabled || !this.ctx || !this.musicGain || !buf) return;
     this.stopMusic();
     // Fade in over 300ms
     this.musicGain.gain.setValueAtTime(0, this.ctx.currentTime);
@@ -601,10 +654,12 @@ class AudioManager {
   }
 
   playMenuMusic(): void {
+    if (!this.musicEnabled) return;
     if (!this.buffersLoaded) { this.pendingMusic = "menu"; return; }
     this.pendingMusic = null; this.playBuffer(this.menuMusicBuffer, true);
   }
   playGameMusic(speedMult = 1): void {
+    if (!this.musicEnabled) return;
     if (!this.buffersLoaded) { this.pendingMusic = "game"; return; }
     this.pendingMusic = null; this.playBuffer(this.gameMusicBuffer, true, speedMult);
   }
@@ -615,6 +670,7 @@ class AudioManager {
     }
   }
   playGameOverMusic(): void {
+    if (!this.musicEnabled) return;
     if (!this.buffersLoaded) { this.pendingMusic = "gameover"; return; }
     this.pendingMusic = null; this.playBuffer(this.gameOverMusicBuffer, false);
   }
@@ -883,7 +939,6 @@ class BlockBlastGame {
   comboHideTimeout = 0;
   displayScore = 0;
   lastPointerTime = 0;
-  newHighScoreShown = false;
   gridPulse = 0; // 0-1, triggered on clears
   timeScale = 1; // For slow-mo effects
 
@@ -896,10 +951,24 @@ class BlockBlastGame {
   // Row/col fill counts (for almost-full indicators)
   rowFill: number[] = new Array(CONFIG.GRID_SIZE).fill(0);
   colFill: number[] = new Array(CONFIG.GRID_SIZE).fill(0);
+  private settings: GameSettings;
+  private settingsButton: HTMLButtonElement;
+  private settingsModal: HTMLElement;
+  private settingsCloseButton: HTMLButtonElement;
+  private musicToggle: HTMLButtonElement;
+  private fxToggle: HTMLButtonElement;
+  private hapticsToggle: HTMLButtonElement;
 
   constructor() {
     this.canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
     this.ctx = this.canvas.getContext("2d")!;
+    this.settings = { ...runtimeSettings };
+    this.settingsButton = document.getElementById("settingsButton") as HTMLButtonElement;
+    this.settingsModal = document.getElementById("settingsModal")!;
+    this.settingsCloseButton = document.getElementById("settingsCloseButton") as HTMLButtonElement;
+    this.musicToggle = document.getElementById("musicToggle") as HTMLButtonElement;
+    this.fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
+    this.hapticsToggle = document.getElementById("hapticsToggle") as HTMLButtonElement;
 
     this.particles = new ParticleSystem();
     this.floatingText = new FloatingTextSystem();
@@ -912,19 +981,13 @@ class BlockBlastGame {
     this.isMobile = window.matchMedia("(pointer: coarse)").matches;
     this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.state = this.createInitialState();
+    this.applySettings();
+    this.updateSettingsUI();
+    this.setGameplayUiVisible(false);
     this.setupEventListeners();
     this.resizeCanvas();
 
     window.addEventListener("resize", () => this.resizeCanvas());
-
-    // Show best score on start screen
-    const hs = this.loadHighScore();
-    if (hs > 0) {
-      const bestEl = document.getElementById("startBestScore");
-      const bestVal = document.getElementById("startBestValue");
-      if (bestEl) bestEl.style.display = "block";
-      if (bestVal) bestVal.textContent = hs.toString();
-    }
 
     // Pause/resume when app goes to background
     document.addEventListener("visibilitychange", () => {
@@ -945,7 +1008,7 @@ class BlockBlastGame {
       for (let x = 0; x < CONFIG.GRID_SIZE; x++) grid[y][x] = null;
     }
     return {
-      grid, blockQueue: [], score: 0, highScore: this.loadHighScore(),
+      grid, blockQueue: [], score: 0,
       linesCleared: 0, blocksPlaced: 0, combo: 0, maxCombo: 0, comboLeeway: 0,
       gameOver: false, started: false,
       nextMilestone: CONFIG.MILESTONE_INTERVAL,
@@ -955,12 +1018,56 @@ class BlockBlastGame {
     };
   }
 
-  loadHighScore(): number {
-    try { return parseInt(localStorage.getItem("blockblast_highscore") || "0", 10); }
-    catch { return 0; }
+  private persistSettings(): void {
+    runtimeSettings = { ...this.settings };
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(runtimeSettings));
   }
-  saveHighScore(s: number): void {
-    try { localStorage.setItem("blockblast_highscore", s.toString()); } catch {}
+
+  private applySettings(): void {
+    this.audio.setMusicEnabled(this.settings.music);
+    this.audio.setFxEnabled(this.settings.fx);
+  }
+
+  private updateSettingsUI(): void {
+    const setToggleLabel = (button: HTMLButtonElement, enabled: boolean): void => {
+      button.textContent = enabled ? "ON" : "OFF";
+      button.classList.toggle("active", enabled);
+    };
+    setToggleLabel(this.musicToggle, this.settings.music);
+    setToggleLabel(this.fxToggle, this.settings.fx);
+    setToggleLabel(this.hapticsToggle, this.settings.haptics);
+  }
+
+  private setGameplayUiVisible(visible: boolean): void {
+    this.settingsButton.classList.toggle("ui-hidden", !visible);
+    if (!visible) {
+      this.closeSettings();
+    }
+  }
+
+  private openSettings(): void {
+    this.settingsModal.classList.remove("ui-hidden");
+  }
+
+  private closeSettings(): void {
+    this.settingsModal.classList.add("ui-hidden");
+  }
+
+  private toggleSetting(key: keyof GameSettings): void {
+    this.settings[key] = !this.settings[key];
+    this.persistSettings();
+    this.applySettings();
+    this.updateSettingsUI();
+    if (this.settings.haptics) {
+      triggerHaptic("light");
+    }
+    if (key === "music") {
+      if (!this.settings.music) {
+        this.audio.stopMusic();
+      } else if (this.state.started && !this.state.gameOver) {
+        this.audio.playGameMusic(1 + this.state.difficulty * 0.03);
+      }
+    }
   }
 
   resizeCanvas(): void {
@@ -978,7 +1085,7 @@ class BlockBlastGame {
 
   calculateLayout(): void {
     const w = window.innerWidth, h = window.innerHeight;
-    const topSafe = this.isMobile ? 60 : 0;
+    const topSafe = this.isMobile ? 120 : 0;
     const isLandscape = w > h * 1.2;
     const hudH = this.isMobile ? (isLandscape ? 80 : 130) : Math.max(90, h * 0.1);
 
@@ -1007,8 +1114,30 @@ class BlockBlastGame {
   }
 
   setupEventListeners(): void {
-    document.getElementById("startButton")?.addEventListener("click", () => this.startGame());
-    document.getElementById("restartButton")?.addEventListener("click", () => this.startGame());
+    document.getElementById("startButton")?.addEventListener("click", () => {
+      triggerHaptic("light");
+      this.startGame();
+    });
+    document.getElementById("restartButton")?.addEventListener("click", () => {
+      triggerHaptic("light");
+      this.startGame();
+    });
+    this.settingsButton.addEventListener("click", () => {
+      triggerHaptic("light");
+      this.openSettings();
+    });
+    this.settingsCloseButton.addEventListener("click", () => {
+      triggerHaptic("light");
+      this.closeSettings();
+    });
+    this.musicToggle.addEventListener("click", () => this.toggleSetting("music"));
+    this.fxToggle.addEventListener("click", () => this.toggleSetting("fx"));
+    this.hapticsToggle.addEventListener("click", () => this.toggleSetting("haptics"));
+    this.settingsModal.addEventListener("click", (event) => {
+      if (event.target === this.settingsModal) {
+        this.closeSettings();
+      }
+    });
 
     this.canvas.addEventListener("mousedown", (e) => this.onPointerDown(e.clientX, e.clientY));
     this.canvas.addEventListener("mousemove", (e) => this.onPointerMove(e.clientX, e.clientY));
@@ -1040,9 +1169,7 @@ class BlockBlastGame {
 
     this.state = this.createInitialState();
     this.state.started = true;
-    this.state.highScore = this.loadHighScore();
     this.displayScore = 0;
-    this.newHighScoreShown = false;
     this.updateScoreDisplay();
 
     // Clean up previous game effects
@@ -1070,6 +1197,8 @@ class BlockBlastGame {
     document.getElementById("startScreen")?.classList.add("hidden");
     document.getElementById("gameOverScreen")?.classList.add("hidden");
     document.getElementById("hud")!.style.display = "flex";
+    this.closeSettings();
+    this.setGameplayUiVisible(true);
     this.updateHUD();
     triggerHaptic("medium");
   }
@@ -1372,18 +1501,6 @@ class BlockBlastGame {
           triggerHaptic("success");
         }
 
-        // New high score detection (mid-game)
-        if (!this.newHighScoreShown && this.state.highScore > 0 && this.state.score > this.state.highScore) {
-          this.newHighScoreShown = true;
-          this.floatingText.add(cx, cy - 100, "NEW BEST!", "#ffd700", 36);
-          this.particles.emit(cx, cy, "#ffd700", 25, "confetti");
-          this.particles.emit(cx, cy, "#ffffff", 10, "star");
-          this.shockwaves.emit(cx, cy, this.cellSize * CONFIG.GRID_SIZE, "#ffd700", 4);
-          this.flash.trigger("#ffd700", 0.15);
-          this.audio.playPerfectClearSound();
-          triggerHaptic("success");
-        }
-
         // Milestone check
         if (this.state.score >= this.state.nextMilestone) {
           this.state.nextMilestone += CONFIG.MILESTONE_INTERVAL;
@@ -1434,6 +1551,12 @@ class BlockBlastGame {
   }
 
   onKeyDown(e: KeyboardEvent): void {
+    if (e.key === "Escape" && !this.settingsModal.classList.contains("ui-hidden")) {
+      e.preventDefault();
+      this.closeSettings();
+      return;
+    }
+
     // Allow Enter/Space to start or restart
     if ((!this.state.started || this.state.gameOver) && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
@@ -1632,14 +1755,14 @@ class BlockBlastGame {
     this.audio.stopMusic();
     this.audio.playGameOverSound();
     setTimeout(() => this.audio.playGameOverMusic(), 500);
+    this.closeSettings();
+    this.setGameplayUiVisible(false);
+    document.getElementById("hud")!.style.display = "none";
     triggerHaptic("error");
 
     if (typeof (window as any).submitScore === "function") {
       (window as any).submitScore(this.state.score);
     }
-
-    const isNew = this.state.score > this.state.highScore;
-    if (isNew) { this.state.highScore = this.state.score; this.saveHighScore(this.state.score); }
 
     // Animated score counter on game over
     const finalScoreEl = document.getElementById("finalScore")!;
@@ -1662,9 +1785,6 @@ class BlockBlastGame {
     if (diffEl) diffEl.textContent = (this.state.difficulty + 1).toString();
     const totalEl = document.getElementById("totalClears");
     if (totalEl) totalEl.textContent = this.state.totalClears.toString();
-
-    const nhEl = document.getElementById("newHighScore")!;
-    if (isNew) nhEl.classList.add("show"); else nhEl.classList.remove("show");
 
     // Grid dissolve effect — spiral outward from center
     const cx = this.gridOffsetX + (CONFIG.GRID_SIZE / 2) * this.cellSize;
@@ -1729,7 +1849,6 @@ class BlockBlastGame {
     // Score updates smoothly via displayScore counter in update()
     // Trigger bump animation
     el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
-    document.getElementById("highScore")!.textContent = this.state.highScore.toString();
     const lvlEl = document.getElementById("levelIndicator");
     if (lvlEl) lvlEl.textContent = "Lv." + (this.state.difficulty + 1);
     // Level progress bar
@@ -2034,14 +2153,12 @@ class BlockBlastGame {
             this.cellSize - cp * 2 - 4, color, placeS);
           // Subtle positional brightness variation
           const posVar = ((x + y) % 2 === 0) ? 0.04 : -0.02;
-          if (posVar !== 0) {
-            ctx.save();
-            ctx.globalAlpha = Math.abs(posVar);
-            ctx.fillStyle = posVar > 0 ? "#ffffff" : "#000000";
-            this.roundRect(ctx, cx + cp + 2, cy + cp + 2, this.cellSize - cp * 2 - 4, this.cellSize - cp * 2 - 4, cr);
-            ctx.fill();
-            ctx.restore();
-          }
+          ctx.save();
+          ctx.globalAlpha = Math.abs(posVar);
+          ctx.fillStyle = posVar > 0 ? "#ffffff" : "#000000";
+          this.roundRect(ctx, cx + cp + 2, cy + cp + 2, this.cellSize - cp * 2 - 4, this.cellSize - cp * 2 - 4, cr);
+          ctx.fill();
+          ctx.restore();
           // Brief white flash on freshly placed blocks
           if (placeS < 0.95) {
             ctx.save();

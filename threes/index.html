@@ -521,14 +521,51 @@
             font-weight: 700;
         }
 
-        /* Audio Controls */
+        .settings-btn {
+            position: fixed;
+            top: 45px;
+            right: 16px;
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.9);
+            color: #555;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+            cursor: pointer;
+            z-index: 22;
+        }
+
+        .settings-btn.hidden {
+            display: none;
+        }
+
+        .settings-btn svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        /* Settings Panel */
         .audio-controls {
             position: fixed;
-            bottom: 30px;
-            right: 30px;
+            top: 105px;
+            right: 16px;
             display: flex;
-            gap: 12px;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
             z-index: 20;
+        }
+
+        .audio-controls.hidden {
+            display: none;
         }
 
         .audio-btn {
@@ -568,6 +605,14 @@
 
         /* Mobile Adjustments */
         @media (pointer: coarse) {
+            .settings-btn {
+                top: 120px;
+            }
+
+            .audio-controls {
+                top: 180px;
+            }
+
             h1 {
                 font-size: 2.8rem;
             }
@@ -654,8 +699,14 @@
 <body>
     <canvas id="gameCanvas"></canvas>
 
-    <!-- Audio Controls -->
-    <div class="audio-controls">
+    <button id="settingsButton" class="settings-btn hidden" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7z"></path>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1A1.7 1.7 0 0 0 4.31 7.13l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.26.62.87 1.02 1.54 1.02H21a2 2 0 1 1 0 4h-.09c-.67 0-1.28.4-1.51 1z"></path>
+        </svg>
+    </button>
+
+    <div class="audio-controls hidden" id="settingsPanel">
         <button class="audio-btn" id="musicToggle" title="Toggle Music">
             <svg id="musicOnIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 18V5l12-2v13"></path>
@@ -680,6 +731,23 @@
                 <line x1="17" y1="9" x2="23" y2="15"></line>
             </svg>
         </button>
+        <button class="audio-btn" id="hapticToggle" title="Toggle Haptics">
+            <svg id="hapticOnIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="7" y="2" width="10" height="20" rx="2"></rect>
+                <line x1="11" y1="18" x2="13" y2="18"></line>
+            </svg>
+            <svg id="hapticOffIcon" style="display: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="7" y="2" width="10" height="20" rx="2"></rect>
+                <line x1="11" y1="18" x2="13" y2="18"></line>
+                <line x1="3" y1="3" x2="21" y2="21"></line>
+            </svg>
+        </button>
+        <button class="audio-btn" id="settingsClose" title="Close Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
     </div>
     
     <!-- HUD -->
@@ -693,12 +761,6 @@
         <div class="hud-center">
             <div class="next-label">next</div>
             <div class="next-tile-preview" id="nextTilePreview"></div>
-        </div>
-        <div class="hud-section" style="align-items: flex-end;">
-            <div class="score-container best">
-                <div class="score-label">best</div>
-                <div class="score-value" id="highScore">0</div>
-            </div>
         </div>
     </div>
 

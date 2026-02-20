@@ -181,6 +181,7 @@ class AudioManager {
   private sfxGain: GainNode | null = null;
   private musicEnabled: boolean = true;
   private sfxEnabled: boolean = true;
+  private hapticsEnabled: boolean = true;
   private buffersLoaded: boolean = false;
 
   constructor() {
@@ -212,13 +213,16 @@ class AudioManager {
   private loadState(): void {
     const music = localStorage.getItem("threes_music_enabled");
     const sfx = localStorage.getItem("threes_sfx_enabled");
+    const haptics = localStorage.getItem("threes_haptics_enabled");
     this.musicEnabled = music !== "false";
     this.sfxEnabled = sfx !== "false";
+    this.hapticsEnabled = haptics !== "false";
   }
 
   private saveState(): void {
     localStorage.setItem("threes_music_enabled", this.musicEnabled.toString());
     localStorage.setItem("threes_sfx_enabled", this.sfxEnabled.toString());
+    localStorage.setItem("threes_haptics_enabled", this.hapticsEnabled.toString());
   }
 
   private updateVolumes(): void {
@@ -293,6 +297,14 @@ class AudioManager {
   }
   isSFXEnabled(): boolean {
     return this.sfxEnabled;
+  }
+  toggleHaptics(): boolean {
+    this.hapticsEnabled = !this.hapticsEnabled;
+    this.saveState();
+    return this.hapticsEnabled;
+  }
+  isHapticsEnabled(): boolean {
+    return this.hapticsEnabled;
   }
 
   // synthesized sound effects
@@ -456,7 +468,6 @@ interface GameState {
   grid: (Tile | null)[][];
   nextTileValue: number;
   score: number;
-  highScore: number;
   movesMade: number;
   mergesMade: number;
   highestTile: number;
@@ -504,6 +515,19 @@ class ThreesGame {
   // Tile deck for fair randomization
   tileDeck: TileDeck;
 
+  private triggerHaptic(type: "light" | "medium" | "heavy" | "success" | "error"): void {
+    if (!this.audio.isHapticsEnabled()) return;
+    if (typeof (window as any).triggerHaptic === "function") {
+      (window as any).triggerHaptic(type);
+    }
+  }
+
+  private setSettingsPanelVisible(visible: boolean): void {
+    const panel = document.getElementById("settingsPanel");
+    if (!panel) return;
+    panel.classList.toggle("hidden", !visible);
+  }
+
   constructor() {
     console.log("[ThreesGame] Initializing game");
 
@@ -539,7 +563,6 @@ class ThreesGame {
       grid,
       nextTileValue: this.generateNextTileValue(),
       score: 0,
-      highScore: this.loadHighScore(),
       movesMade: 0,
       mergesMade: 0,
       highestTile: 0,
@@ -547,22 +570,6 @@ class ThreesGame {
       started: false,
       animating: false,
     };
-  }
-
-  loadHighScore(): number {
-    try {
-      return parseInt(localStorage.getItem("threes_highscore") || "0", 10);
-    } catch {
-      return 0;
-    }
-  }
-
-  saveHighScore(score: number): void {
-    try {
-      localStorage.setItem("threes_highscore", score.toString());
-    } catch {
-      // Ignore storage errors
-    }
   }
 
   generateNextTileValue(): number {
@@ -614,40 +621,68 @@ class ThreesGame {
     // Start buttons
     document.getElementById("startButton")?.addEventListener("click", () => {
       this.audio.playClickSFX();
+      this.triggerHaptic("light");
       this.startGame();
     });
     document.getElementById("restartButton")?.addEventListener("click", () => {
       this.audio.playClickSFX();
+      this.triggerHaptic("light");
       this.startGame();
     });
     document.getElementById("galleryButton")?.addEventListener("click", () => {
       this.audio.playClickSFX();
+      this.triggerHaptic("light");
       this.showGallery();
     });
     document
       .getElementById("gameOverGalleryButton")
       ?.addEventListener("click", () => {
         this.audio.playClickSFX();
+        this.triggerHaptic("light");
         this.showGalleryFromGameOver();
       });
     document
       .getElementById("galleryBackButton")
       ?.addEventListener("click", () => {
         this.audio.playClickSFX();
+        this.triggerHaptic("light");
         this.hideGallery();
       });
 
-    // Audio Toggles
+    document.getElementById("settingsButton")?.addEventListener("click", () => {
+      this.audio.playClickSFX();
+      this.triggerHaptic("light");
+      const panel = document.getElementById("settingsPanel");
+      if (!panel) return;
+      panel.classList.toggle("hidden");
+    });
+    document.getElementById("settingsClose")?.addEventListener("click", () => {
+      this.audio.playClickSFX();
+      this.triggerHaptic("light");
+      this.setSettingsPanelVisible(false);
+    });
+
+    // Settings Toggles
     document.getElementById("musicToggle")?.addEventListener("click", () => {
       this.audio.toggleMusic();
       this.updateAudioButtons();
       this.audio.playClickSFX();
+      this.triggerHaptic("light");
     });
 
     document.getElementById("sfxToggle")?.addEventListener("click", () => {
       this.audio.toggleSFX();
       this.updateAudioButtons();
       this.audio.playClickSFX();
+      this.triggerHaptic("light");
+    });
+
+    document.getElementById("hapticToggle")?.addEventListener("click", () => {
+      this.audio.toggleHaptics();
+      this.updateAudioButtons();
+      if (this.audio.isHapticsEnabled()) {
+        this.triggerHaptic("light");
+      }
     });
 
     this.updateAudioButtons();
@@ -712,6 +747,14 @@ class ThreesGame {
       document.getElementById("sfxOnIcon")!.style.display = on ? "block" : "none";
       document.getElementById("sfxOffIcon")!.style.display = on ? "none" : "block";
     }
+
+    const hapticBtn = document.getElementById("hapticToggle");
+    if (hapticBtn) {
+      const on = this.audio.isHapticsEnabled();
+      hapticBtn.classList.toggle("muted", !on);
+      document.getElementById("hapticOnIcon")!.style.display = on ? "block" : "none";
+      document.getElementById("hapticOffIcon")!.style.display = on ? "none" : "block";
+    }
   }
 
   startGame(): void {
@@ -725,7 +768,6 @@ class ThreesGame {
 
     this.state = this.createInitialState();
     this.state.started = true;
-    this.state.highScore = this.loadHighScore();
 
     // Spawn initial tiles (9 tiles to start like original Threes)
     this.spawnInitialTiles();
@@ -734,6 +776,8 @@ class ThreesGame {
     document.getElementById("startScreen")?.classList.add("hidden");
     document.getElementById("gameOverScreen")?.classList.add("hidden");
     document.getElementById("hud")!.style.display = "flex";
+    document.getElementById("settingsButton")?.classList.remove("hidden");
+    this.setSettingsPanelVisible(false);
 
     this.updateHUD();
     this.updateNextTilePreview();
@@ -888,6 +932,7 @@ class ThreesGame {
       this.state.movesMade++;
       this.state.animating = true;
       this.audio.playMoveSFX();
+      this.triggerHaptic("light");
 
       // After animation, spawn new tile
       setTimeout(() => {
@@ -998,6 +1043,7 @@ class ThreesGame {
         this.state.mergesMade++;
         this.state.highestTile = Math.max(this.state.highestTile, newValue);
         this.audio.playMergeSFX();
+        this.triggerHaptic("medium");
 
         // Track which line moved for spawning
         if (direction === "left" || direction === "right") {
@@ -1186,14 +1232,9 @@ class ThreesGame {
       console.log("[ThreesGame.endGame] Score submitted:", this.state.score);
     }
 
-    // 2. Check for new high score
-    const isNewHighScore = this.state.score > this.state.highScore;
-    if (isNewHighScore) {
-      this.state.highScore = this.state.score;
-      this.saveHighScore(this.state.score);
-    }
+    this.triggerHaptic("error");
 
-    // 3. Update game over screen
+    // 2. Update game over screen
     document.getElementById("finalScore")!.textContent =
       this.state.score.toString();
     document.getElementById("movesMade")!.textContent =
@@ -1203,9 +1244,11 @@ class ThreesGame {
     document.getElementById("highestTile")!.textContent =
       "highest: " + this.state.highestTile;
 
-    // 4. Show game over screen
+    // 3. Show game over screen
     setTimeout(() => {
       document.getElementById("gameOverScreen")?.classList.remove("hidden");
+      document.getElementById("settingsButton")?.classList.add("hidden");
+      this.setSettingsPanelVisible(false);
     }, 500);
   }
 
@@ -1215,8 +1258,6 @@ class ThreesGame {
     const newScore = this.state.score;
 
     scoreEl.textContent = newScore.toString();
-    document.getElementById("highScore")!.textContent =
-      this.state.highScore.toString();
 
     if (newScore > oldScore) {
       scoreEl.classList.remove("bump");
@@ -2143,6 +2184,8 @@ class ThreesGame {
     if (!galleryScreen || !startScreen) return;
 
     startScreen.classList.add("hidden");
+    document.getElementById("settingsButton")?.classList.add("hidden");
+    this.setSettingsPanelVisible(false);
     galleryScreen.classList.remove("hidden");
     this.renderGallery();
   }
@@ -2161,6 +2204,8 @@ class ThreesGame {
     gameOverScreen.classList.add("hidden");
     if (hud) hud.style.display = "none";
     this.canvas.style.visibility = "hidden";
+    document.getElementById("settingsButton")?.classList.add("hidden");
+    this.setSettingsPanelVisible(false);
 
     galleryScreen.classList.remove("hidden");
     this.renderGallery();
@@ -2184,8 +2229,12 @@ class ThreesGame {
       this.canvas.style.visibility = "visible";
       if (hud) hud.style.display = "flex";
       gameOverScreen.classList.remove("hidden");
+      document.getElementById("settingsButton")?.classList.add("hidden");
+      this.setSettingsPanelVisible(false);
     } else if (startScreen) {
       startScreen.classList.remove("hidden");
+      document.getElementById("settingsButton")?.classList.add("hidden");
+      this.setSettingsPanelVisible(false);
     }
   }
 
