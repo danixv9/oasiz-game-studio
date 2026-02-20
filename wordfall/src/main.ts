@@ -113,6 +113,27 @@ interface BucketLayout {
   dangerLineY: number;
 }
 
+interface GameSettings {
+  music: boolean;
+  fx: boolean;
+  haptics: boolean;
+}
+
+type OasizSettings = {
+  music?: boolean;
+  fx?: boolean;
+  haptics?: boolean;
+};
+
+function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
+  const raw = (window as any).__OASIZ_SETTINGS__ as OasizSettings | undefined;
+  return {
+    music: raw?.music !== false,
+    fx: raw?.fx !== false,
+    haptics: raw?.haptics !== false,
+  };
+}
+
 // ============= UTILITY FUNCTIONS =============
 function randomRange(min: number, max: number): number {
   return min + Math.random() * (max - min);
@@ -216,6 +237,7 @@ class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private initialized = false;
+  private fxEnabled = true;
 
   init() {
     if (this.initialized) return;
@@ -231,7 +253,7 @@ class AudioManager {
   }
 
   private playTone(freq: number, duration: number, type: OscillatorType = "sine", volume = 0.3) {
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.fxEnabled || !this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -246,13 +268,14 @@ class AudioManager {
   }
 
   playClear() {
+    if (!this.fxEnabled) return;
     [400, 500, 600].forEach((freq, i) => {
       setTimeout(() => this.playTone(freq, 0.15, "sine", 0.25), i * 50);
     });
   }
 
   playBomb() {
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.fxEnabled || !this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -269,7 +292,7 @@ class AudioManager {
   }
 
   playFreeze() {
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.fxEnabled || !this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -285,7 +308,7 @@ class AudioManager {
   }
 
   playShrink() {
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.fxEnabled || !this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -301,17 +324,23 @@ class AudioManager {
   }
 
   playGameOver() {
+    if (!this.fxEnabled) return;
     [400, 350, 300, 200].forEach((freq, i) => {
       setTimeout(() => this.playTone(freq, 0.3, "sawtooth", 0.2), i * 150);
     });
   }
 
   playCombo(streak: number) {
+    if (!this.fxEnabled) return;
     const baseFreq = 500 + streak * 50;
     [0, 4, 7].forEach((semitone, i) => {
       const freq = baseFreq * Math.pow(2, semitone / 12);
       setTimeout(() => this.playTone(freq, 0.12, "square", 0.15), i * 60);
     });
+  }
+
+  setFxEnabled(enabled: boolean) {
+    this.fxEnabled = enabled;
   }
 }
 
@@ -346,12 +375,31 @@ class WordfallGame {
   
   // Timing
   lastTime = 0;
+  settings: GameSettings;
+  private readonly settingsStorageKey = "wordfall_settings";
+  private settingsButton: HTMLButtonElement;
+  private settingsModal: HTMLElement;
+  private settingsCloseButton: HTMLButtonElement;
+  private musicToggle: HTMLButtonElement;
+  private fxToggle: HTMLButtonElement;
+  private hapticsToggle: HTMLButtonElement;
+  private backgroundMusic: HTMLAudioElement;
 
   constructor() {
     console.log("[WordfallGame] Initializing with Matter.js");
     
     this.canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
     this.ctx = this.canvas.getContext("2d")!;
+    this.settingsButton = document.getElementById("settingsButton") as HTMLButtonElement;
+    this.settingsModal = document.getElementById("settingsModal")!;
+    this.settingsCloseButton = document.getElementById("settingsCloseButton") as HTMLButtonElement;
+    this.musicToggle = document.getElementById("musicToggle") as HTMLButtonElement;
+    this.fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
+    this.hapticsToggle = document.getElementById("hapticsToggle") as HTMLButtonElement;
+    this.settings = this.loadSettings();
+    this.backgroundMusic = new Audio("https://oasiz-assets.vercel.app/audio/game-music.mp3");
+    this.backgroundMusic.loop = true;
+    this.backgroundMusic.volume = 0.24;
     
     // Initialize Matter.js
     this.engine = Matter.Engine.create({
@@ -379,6 +427,9 @@ class WordfallGame {
     }
     
     this.state = this.createInitialState();
+    this.applySettings();
+    this.updateSettingsUI();
+    this.setGameplayUiVisible(false);
     
     this.setupEventListeners();
     this.resizeCanvas();
@@ -402,6 +453,91 @@ class WordfallGame {
       lastClearTime: 0,
       dangerGraceTimer: 0,
     };
+  }
+
+  private loadSettings(): GameSettings {
+    const platform = getOasizSettings();
+    const defaults: GameSettings = { music: platform.music, fx: platform.fx, haptics: platform.haptics };
+    try {
+      const raw = localStorage.getItem(this.settingsStorageKey);
+      if (!raw) return defaults;
+      const parsed = JSON.parse(raw) as Partial<GameSettings>;
+      return {
+        music: parsed.music ?? defaults.music,
+        fx: parsed.fx ?? defaults.fx,
+        haptics: parsed.haptics ?? defaults.haptics,
+      };
+    } catch {
+      return defaults;
+    }
+  }
+
+  private saveSettings() {
+    localStorage.setItem(this.settingsStorageKey, JSON.stringify(this.settings));
+  }
+
+  private isMusicEnabled(): boolean {
+    return this.settings.music && getOasizSettings().music;
+  }
+
+  private isFxEnabled(): boolean {
+    return this.settings.fx && getOasizSettings().fx;
+  }
+
+  private isHapticsEnabled(): boolean {
+    return this.settings.haptics && getOasizSettings().haptics;
+  }
+
+  private applySettings() {
+    this.audio.setFxEnabled(this.isFxEnabled());
+    if (!this.isMusicEnabled()) {
+      this.backgroundMusic.pause();
+      this.backgroundMusic.currentTime = 0;
+    } else if (this.state.started && !this.state.gameOver) {
+      this.backgroundMusic.play().catch(() => {});
+    }
+  }
+
+  private updateSettingsUI() {
+    const setToggle = (button: HTMLButtonElement, enabled: boolean) => {
+      button.textContent = enabled ? "ON" : "OFF";
+      button.classList.toggle("active", enabled);
+    };
+    setToggle(this.musicToggle, this.settings.music);
+    setToggle(this.fxToggle, this.settings.fx);
+    setToggle(this.hapticsToggle, this.settings.haptics);
+  }
+
+  private triggerHaptic(type: "light" | "medium" | "heavy" | "success" | "error") {
+    if (!this.isHapticsEnabled()) return;
+    if (typeof (window as any).triggerHaptic === "function") {
+      (window as any).triggerHaptic(type);
+    }
+  }
+
+  private openSettings() {
+    this.settingsModal.classList.remove("ui-hidden");
+  }
+
+  private closeSettings() {
+    this.settingsModal.classList.add("ui-hidden");
+  }
+
+  private setGameplayUiVisible(visible: boolean) {
+    this.settingsButton.classList.toggle("ui-hidden", !visible);
+    if (!visible) {
+      this.closeSettings();
+    }
+  }
+
+  private toggleSetting(key: keyof GameSettings) {
+    this.settings[key] = !this.settings[key];
+    this.saveSettings();
+    this.applySettings();
+    this.updateSettingsUI();
+    if (this.settings.haptics) {
+      this.triggerHaptic("light");
+    }
   }
 
   resizeCanvas() {
@@ -514,9 +650,34 @@ class WordfallGame {
     const restartBtn = document.getElementById("restartButton");
     const menuBtn = document.getElementById("menuButton");
     
-    startBtn?.addEventListener("click", () => this.startGame());
-    restartBtn?.addEventListener("click", () => this.startGame());
-    menuBtn?.addEventListener("click", () => this.showMenu());
+    startBtn?.addEventListener("click", () => {
+      this.triggerHaptic("light");
+      this.startGame();
+    });
+    restartBtn?.addEventListener("click", () => {
+      this.triggerHaptic("light");
+      this.startGame();
+    });
+    menuBtn?.addEventListener("click", () => {
+      this.triggerHaptic("light");
+      this.showMenu();
+    });
+    this.settingsButton.addEventListener("click", () => {
+      this.triggerHaptic("light");
+      this.openSettings();
+    });
+    this.settingsCloseButton.addEventListener("click", () => {
+      this.triggerHaptic("light");
+      this.closeSettings();
+    });
+    this.musicToggle.addEventListener("click", () => this.toggleSetting("music"));
+    this.fxToggle.addEventListener("click", () => this.toggleSetting("fx"));
+    this.hapticsToggle.addEventListener("click", () => this.toggleSetting("haptics"));
+    this.settingsModal.addEventListener("click", (event) => {
+      if (event.target === this.settingsModal) {
+        this.closeSettings();
+      }
+    });
     
     // Input handling
     input.addEventListener("input", (e) => {
@@ -527,6 +688,11 @@ class WordfallGame {
     });
     
     input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !this.settingsModal.classList.contains("ui-hidden")) {
+        e.preventDefault();
+        this.closeSettings();
+        return;
+      }
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         this.submitBuffer();
@@ -551,6 +717,7 @@ class WordfallGame {
     console.log("[WordfallGame.startGame]");
     
     this.audio.init();
+    this.applySettings();
     
     // Clear all word bodies
     for (const word of this.words) {
@@ -572,6 +739,12 @@ class WordfallGame {
     document.getElementById("gameOverScreen")?.classList.add("hidden");
     document.getElementById("hud")!.style.display = "flex";
     document.getElementById("bufferDisplay")!.style.display = "block";
+    this.setGameplayUiVisible(true);
+    this.closeSettings();
+    if (this.isMusicEnabled()) {
+      this.backgroundMusic.currentTime = 0;
+      this.backgroundMusic.play().catch(() => {});
+    }
     
     // Focus input
     const input = document.getElementById("typingInput") as HTMLInputElement;
@@ -585,6 +758,8 @@ class WordfallGame {
   showMenu() {
     // Stop physics
     Matter.Runner.stop(this.runner);
+    this.backgroundMusic.pause();
+    this.backgroundMusic.currentTime = 0;
     
     // Clear words
     for (const word of this.words) {
@@ -596,6 +771,7 @@ class WordfallGame {
     document.getElementById("startScreen")?.classList.remove("hidden");
     document.getElementById("hud")!.style.display = "none";
     document.getElementById("bufferDisplay")!.style.display = "none";
+    this.setGameplayUiVisible(false);
   }
 
   updateBufferDisplay() {
@@ -743,20 +919,24 @@ class WordfallGame {
       case "bomb":
         score = CONFIG.SCORE_BOMB;
         this.triggerBombEffect(word);
+        this.triggerHaptic("heavy");
         break;
       case "freeze":
         score = CONFIG.SCORE_FREEZE;
         this.triggerFreezeEffect();
         this.particles.emitExplosion(pos.x, pos.y, CONFIG.COLOR_FREEZE.bg);
+        this.triggerHaptic("medium");
         break;
       case "shrink":
         score = CONFIG.SCORE_SHRINK;
         this.triggerShrinkEffect();
         this.particles.emitExplosion(pos.x, pos.y, CONFIG.COLOR_SHRINK.bg);
+        this.triggerHaptic("medium");
         break;
       default:
         this.particles.emitExplosion(pos.x, pos.y, CONFIG.COLOR_NORMAL.bg);
         this.audio.playClear();
+        this.triggerHaptic("light");
     }
     
     // Combo handling
@@ -767,6 +947,7 @@ class WordfallGame {
         score = Math.floor(score * (1 + this.state.combo * 0.25));
         this.showCombo(this.state.combo);
         this.audio.playCombo(this.state.combo);
+        this.triggerHaptic(this.state.combo >= 3 ? "success" : "medium");
       }
     } else {
       this.state.combo = 1;
@@ -914,6 +1095,10 @@ class WordfallGame {
     this.state.gameOver = true;
     Matter.Runner.stop(this.runner);
     this.audio.playGameOver();
+    this.backgroundMusic.pause();
+    this.backgroundMusic.currentTime = 0;
+    this.setGameplayUiVisible(false);
+    this.triggerHaptic("error");
     
     // Submit score
     if (typeof (window as any).submitScore === "function") {

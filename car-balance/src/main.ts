@@ -52,6 +52,99 @@ function getOasizSettings(): { music: boolean; fx: boolean; haptics: boolean } {
   };
 }
 
+interface GameSettings {
+  music: boolean;
+  fx: boolean;
+  haptics: boolean;
+}
+
+const SETTINGS_STORAGE_KEY = 'car_balance_settings';
+
+let settings: GameSettings = loadSettings();
+
+function loadSettings(): GameSettings {
+  const platform = getOasizSettings();
+  const defaults: GameSettings = { music: platform.music, fx: platform.fx, haptics: platform.haptics };
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as Partial<GameSettings>;
+    return {
+      music: parsed.music ?? defaults.music,
+      fx: parsed.fx ?? defaults.fx,
+      haptics: parsed.haptics ?? defaults.haptics,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function saveSettings(): void {
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+}
+
+function isMusicEnabled(): boolean {
+  return settings.music && getOasizSettings().music;
+}
+
+function isFxEnabled(): boolean {
+  return settings.fx && getOasizSettings().fx;
+}
+
+function isHapticsEnabled(): boolean {
+  return settings.haptics && getOasizSettings().haptics;
+}
+
+function triggerGameHaptic(type: 'light' | 'medium' | 'heavy' | 'success' | 'error'): void {
+  if (!isHapticsEnabled()) return;
+  if (typeof (window as any).triggerHaptic === 'function') {
+    (window as any).triggerHaptic(type);
+  }
+}
+
+function updateSettingsToggleUI(buttonId: string, enabled: boolean): void {
+  const button = document.getElementById(buttonId) as HTMLButtonElement | null;
+  if (!button) return;
+  button.textContent = enabled ? 'ON' : 'OFF';
+  button.classList.toggle('active', enabled);
+}
+
+function refreshSettingsUI(): void {
+  updateSettingsToggleUI('music-toggle', settings.music);
+  updateSettingsToggleUI('fx-toggle', settings.fx);
+  updateSettingsToggleUI('haptics-toggle', settings.haptics);
+}
+
+function applySettings(): void {
+  if (themeMusic) {
+    if (isMusicEnabled() && gamePhase === 'playing') {
+      themeMusic.play().catch(() => {});
+    } else {
+      themeMusic.pause();
+    }
+  }
+  if (gameOverMusic && !isMusicEnabled()) {
+    gameOverMusic.pause();
+  }
+}
+
+function setSettingsButtonVisible(visible: boolean): void {
+  const button = document.getElementById('settings-btn');
+  if (!button) return;
+  button.classList.toggle('ui-hidden', !visible);
+  if (!visible) {
+    closeSettingsModal();
+  }
+}
+
+function openSettingsModal(): void {
+  document.getElementById('settings-modal')?.classList.remove('ui-hidden');
+}
+
+function closeSettingsModal(): void {
+  document.getElementById('settings-modal')?.classList.add('ui-hidden');
+}
+
 // Available car styles (6 options)
 const CAR_STYLES: CarStyle[] = [
   {
@@ -338,11 +431,7 @@ function createCar(xx: number, yy: number, width: number, height: number, wheelS
   });
   
   // Add all parts to the composite
-  Composite.addBody(carComposite, body);
-  Composite.addBody(carComposite, wheelA);
-  Composite.addBody(carComposite, wheelB);
-  Composite.addConstraint(carComposite, axelA);
-  Composite.addConstraint(carComposite, axelB);
+  Composite.add(carComposite, [body, wheelA, wheelB, axelA, axelB]);
   
   return {
     composite: carComposite,
@@ -378,6 +467,8 @@ function init(): void {
   
   // Set up UI handlers
   setupUIHandlers();
+  refreshSettingsUI();
+  setSettingsButtonVisible(false);
   
   // Initialize physics
   initPhysics();
@@ -465,6 +556,7 @@ function handleCollision(event: Matter.IEventCollision<Matter.Engine>): void {
       
       // Create explosion at bomb position
       createExplosion(bombBody.position.x, bombBody.position.y);
+      triggerGameHaptic('heavy');
       
       // Mark bomb as exploded and remove from world
       for (const bomb of bombs) {
@@ -526,6 +618,13 @@ function resizeCanvas(): void {
 function setupInputHandlers(): void {
   // Keyboard
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const settingsModal = document.getElementById('settings-modal');
+      if (settingsModal && !settingsModal.classList.contains('ui-hidden')) {
+        closeSettingsModal();
+        return;
+      }
+    }
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
       holdingLeft = true;
     }
@@ -548,18 +647,18 @@ function setupInputHandlers(): void {
   const btnRight = document.getElementById('btn-right')!;
   
   // Left button - tilts beam so left side goes DOWN (holdingRight action)
-  btnLeft.addEventListener('mousedown', () => { holdingRight = true; btnLeft.classList.add('active'); });
+  btnLeft.addEventListener('mousedown', () => { holdingRight = true; btnLeft.classList.add('active'); triggerGameHaptic('light'); });
   btnLeft.addEventListener('mouseup', () => { holdingRight = false; btnLeft.classList.remove('active'); });
   btnLeft.addEventListener('mouseleave', () => { holdingRight = false; btnLeft.classList.remove('active'); });
-  btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); holdingRight = true; btnLeft.classList.add('active'); }, { passive: false });
+  btnLeft.addEventListener('touchstart', (e) => { e.preventDefault(); holdingRight = true; btnLeft.classList.add('active'); triggerGameHaptic('light'); }, { passive: false });
   btnLeft.addEventListener('touchend', () => { holdingRight = false; btnLeft.classList.remove('active'); });
   btnLeft.addEventListener('touchcancel', () => { holdingRight = false; btnLeft.classList.remove('active'); });
   
   // Right button - tilts beam so right side goes DOWN (holdingLeft action)
-  btnRight.addEventListener('mousedown', () => { holdingLeft = true; btnRight.classList.add('active'); });
+  btnRight.addEventListener('mousedown', () => { holdingLeft = true; btnRight.classList.add('active'); triggerGameHaptic('light'); });
   btnRight.addEventListener('mouseup', () => { holdingLeft = false; btnRight.classList.remove('active'); });
   btnRight.addEventListener('mouseleave', () => { holdingLeft = false; btnRight.classList.remove('active'); });
-  btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); holdingLeft = true; btnRight.classList.add('active'); }, { passive: false });
+  btnRight.addEventListener('touchstart', (e) => { e.preventDefault(); holdingLeft = true; btnRight.classList.add('active'); triggerGameHaptic('light'); }, { passive: false });
   btnRight.addEventListener('touchend', () => { holdingLeft = false; btnRight.classList.remove('active'); });
   btnRight.addEventListener('touchcancel', () => { holdingLeft = false; btnRight.classList.remove('active'); });
 }
@@ -573,11 +672,63 @@ function setupUIHandlers(): void {
   const restartBtn = document.getElementById('restart-btn')!;
   const galleryBtn = document.getElementById('gallery-btn')!;
   const backBtn = document.getElementById('back-btn')!;
-  
-  startBtn.addEventListener('click', startGame);
-  restartBtn.addEventListener('click', restartGame);
-  galleryBtn.addEventListener('click', openGallery);
-  backBtn.addEventListener('click', closeGallery);
+  const settingsBtn = document.getElementById('settings-btn') as HTMLButtonElement;
+  const settingsModal = document.getElementById('settings-modal') as HTMLElement;
+  const settingsClose = document.getElementById('settings-close') as HTMLButtonElement;
+  const musicToggle = document.getElementById('music-toggle') as HTMLButtonElement;
+  const fxToggle = document.getElementById('fx-toggle') as HTMLButtonElement;
+  const hapticsToggle = document.getElementById('haptics-toggle') as HTMLButtonElement;
+
+  startBtn.addEventListener('click', () => {
+    triggerGameHaptic('light');
+    startGame();
+  });
+  restartBtn.addEventListener('click', () => {
+    triggerGameHaptic('light');
+    restartGame();
+  });
+  galleryBtn.addEventListener('click', () => {
+    triggerGameHaptic('light');
+    openGallery();
+  });
+  backBtn.addEventListener('click', () => {
+    triggerGameHaptic('light');
+    closeGallery();
+  });
+  settingsBtn.addEventListener('click', () => {
+    triggerGameHaptic('light');
+    openSettingsModal();
+  });
+  settingsClose.addEventListener('click', () => {
+    triggerGameHaptic('light');
+    closeSettingsModal();
+  });
+  settingsModal.addEventListener('click', (event) => {
+    if (event.target === settingsModal) {
+      closeSettingsModal();
+    }
+  });
+  musicToggle.addEventListener('click', () => {
+    settings.music = !settings.music;
+    saveSettings();
+    refreshSettingsUI();
+    applySettings();
+    triggerGameHaptic('light');
+  });
+  fxToggle.addEventListener('click', () => {
+    settings.fx = !settings.fx;
+    saveSettings();
+    refreshSettingsUI();
+    triggerGameHaptic('light');
+  });
+  hapticsToggle.addEventListener('click', () => {
+    settings.haptics = !settings.haptics;
+    saveSettings();
+    refreshSettingsUI();
+    if (settings.haptics) {
+      triggerGameHaptic('light');
+    }
+  });
   
   // Initialize gallery with car options
   initGallery();
@@ -719,7 +870,7 @@ function startGame(): void {
   gameTime = 0;
   
   // Start theme music
-  if (themeMusic && getOasizSettings().music) {
+  if (themeMusic && isMusicEnabled()) {
     themeMusic.currentTime = 0;
     themeMusic.play().catch(() => {});
   } else if (themeMusic) {
@@ -759,6 +910,8 @@ function startGame(): void {
   // Show HUD and controls
   document.getElementById('start-screen')!.classList.add('hidden');
   document.getElementById('hud')!.classList.remove('hidden');
+  setSettingsButtonVisible(true);
+  closeSettingsModal();
   if (isMobile) {
     document.getElementById('controls')!.classList.remove('hidden');
   }
@@ -772,7 +925,7 @@ function restartGame(): void {
 }
 
 function playSplashSound(): void {
-  if (!getOasizSettings().fx) return;
+  if (!isFxEnabled()) return;
   try {
     // Create audio context if needed
     if (!audioContext) {
@@ -828,6 +981,7 @@ function endGame(): void {
   console.log('[endGame] Game over at', (gameTime / 1000).toFixed(1), 'seconds');
   
   gamePhase = 'gameOver';
+  triggerGameHaptic('error');
   
   // Stop theme music
   if (themeMusic) {
@@ -839,7 +993,7 @@ function endGame(): void {
   
   // Play game over music after a short delay
   setTimeout(() => {
-    if (gameOverMusic && getOasizSettings().music) {
+    if (gameOverMusic && isMusicEnabled()) {
       gameOverMusic.currentTime = 0;
       gameOverMusic.play().catch(() => {});
     } else if (gameOverMusic) {
@@ -859,6 +1013,7 @@ function endGame(): void {
   // Update UI
   document.getElementById('hud')!.classList.add('hidden');
   document.getElementById('controls')!.classList.add('hidden');
+  setSettingsButtonVisible(false);
   document.getElementById('final-time')!.textContent = (gameTime / 1000).toFixed(1) + 's';
   
   // Delay showing game over screen for splash effect
@@ -1057,6 +1212,7 @@ function updateBombs(dt: number): void {
         if (carDist < explosionRadius + car.bodyWidth / 2) {
           // Bomb explosion hit the car - game over!
           console.log('[updateBombs] Bomb explosion hit the car! Distance:', carDist.toFixed(0));
+          triggerGameHaptic('heavy');
           endGame();
           return;
         }

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Wordfall</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,6 +30,10 @@
       top: 0;
       left: 0;
       z-index: 1;
+    }
+
+    .ui-hidden {
+      display: none !important;
     }
 
     /* Hidden input for typing */
@@ -136,7 +141,7 @@
     /* HUD */
     #hud {
       position: fixed;
-      top: 10px; /* Safe area handled by padding below */
+      top: max(45px, calc(env(safe-area-inset-top) + 8px));
       left: 0;
       right: 0;
       display: none;
@@ -145,6 +150,121 @@
       padding: 0 10px;
       z-index: 50;
       pointer-events: none;
+    }
+
+    #settingsButton {
+      position: fixed;
+      top: max(45px, calc(env(safe-area-inset-top) + 8px));
+      right: 16px;
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      background: rgba(15, 23, 42, 0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      z-index: 70;
+      cursor: pointer;
+      transition: transform 0.12s ease, border-color 0.2s ease;
+    }
+
+    #settingsButton:active {
+      transform: scale(0.95);
+    }
+
+    #settingsButton:hover {
+      border-color: rgba(0, 212, 255, 0.8);
+    }
+
+    #settingsButton svg {
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
+    }
+
+    #settingsModal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 95;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .settings-panel {
+      width: min(90vw, 360px);
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 16px;
+      padding: 1rem;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+
+    .settings-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    #settingsCloseButton {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .settings-row {
+      margin-top: 0.55rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      border-radius: 10px;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .settings-label {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .settings-toggle {
+      min-width: 70px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 0.35rem 0.7rem;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+    }
+
+    .settings-toggle.active {
+      background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+      color: #05121f;
+      border-color: rgba(0, 212, 255, 0.95);
     }
 
     .hud-badge {
@@ -352,6 +472,10 @@
 
     /* Mobile adjustments */
     @media (pointer: coarse) {
+      #settingsButton {
+        top: max(120px, calc(env(safe-area-inset-top) + 8px));
+      }
+
       #bufferDisplay {
         bottom: 1rem;
       }
@@ -367,7 +491,7 @@
 
       #hud {
         padding: 0.75rem 1rem;
-        padding-top: max(0.75rem, env(safe-area-inset-top));
+        padding-top: max(120px, env(safe-area-inset-top));
       }
 
       .hud-value {
@@ -395,6 +519,30 @@
     <div class="hud-badge">
       <div class="hud-label">Time</div>
       <div class="hud-value" id="timer">0:00</div>
+    </div>
+  </div>
+
+  <button id="settingsButton" class="ui-hidden" aria-label="Open settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.63l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.95l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.57.23-1.12.54-1.63.95l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.85a.5.5 0 0 0 .12.63l2.03 1.58c-.05.31-.08.63-.08.94s.03.63.08.94l-2.03 1.58a.5.5 0 0 0-.12.63l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.51.41 1.06.72 1.63.95l.36 2.54c.04.24.25.42.49.42h3.84c.24 0 .45-.18.49-.42l.36-2.54a7.2 7.2 0 0 0 1.63-.95l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.63l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"></path></svg>
+  </button>
+  <div id="settingsModal" class="ui-hidden">
+    <div class="settings-panel" role="dialog" aria-modal="true" aria-label="Game settings">
+      <div class="settings-header">
+        <div class="settings-title">Settings</div>
+        <button id="settingsCloseButton" type="button" aria-label="Close settings">×</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Music</span>
+        <button id="musicToggle" class="settings-toggle active" type="button">ON</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">FX</span>
+        <button id="fxToggle" class="settings-toggle active" type="button">ON</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Haptics</span>
+        <button id="hapticsToggle" class="settings-toggle active" type="button">ON</button>
+      </div>
     </div>
   </div>
 

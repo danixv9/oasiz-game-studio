@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Car Balance</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,6 +29,10 @@
       position: absolute;
       top: 0;
       left: 0;
+    }
+
+    .ui-hidden {
+      display: none !important;
     }
     
     /* UI Overlays */
@@ -321,7 +326,7 @@
       top: 0;
       left: 0;
       width: 100%;
-      padding: 1rem;
+      padding: 45px 1rem 0.5rem;
       display: flex;
       justify-content: center;
       z-index: 5;
@@ -354,6 +359,116 @@
     
     #controls.hidden {
       display: none !important;
+    }
+
+    #settings-btn {
+      position: fixed;
+      top: max(45px, calc(env(safe-area-inset-top) + 8px));
+      right: 20px;
+      width: 54px;
+      height: 54px;
+      border-radius: 14px;
+      border: 3px solid #222;
+      background: #f5f5dc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 4px 4px 0 #222;
+      cursor: pointer;
+      z-index: 12;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+
+    #settings-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 #222;
+    }
+
+    #settings-btn svg {
+      width: 28px;
+      height: 28px;
+      fill: #222;
+    }
+
+    #settings-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+
+    .settings-panel {
+      width: min(90vw, 360px);
+      background: #f5f5dc;
+      border: 4px solid #222;
+      border-radius: 18px;
+      box-shadow: 6px 6px 0 #222;
+      padding: 1rem;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.8rem;
+    }
+
+    .settings-title {
+      font-family: 'Fredoka', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #222;
+    }
+
+    #settings-close {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 2px solid #222;
+      background: #fff;
+      color: #222;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .settings-row {
+      margin-top: 0.6rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 12px;
+      border: 2px solid #222;
+      background: #fff8dc;
+    }
+
+    .settings-label {
+      font-family: 'Fredoka', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #222;
+    }
+
+    .settings-toggle {
+      min-width: 72px;
+      padding: 0.4rem 0.7rem;
+      border-radius: 999px;
+      border: 2px solid #222;
+      background: #fff;
+      color: #222;
+      font-family: 'Fredoka', sans-serif;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .settings-toggle.active {
+      background: #90EE90;
+      border-color: #228B22;
     }
     
     .control-btn {
@@ -391,6 +506,12 @@
     @media (max-width: 768px), (pointer: coarse) {
       #controls:not(.hidden) {
         display: flex;
+      }
+      #hud {
+        padding-top: max(120px, calc(env(safe-area-inset-top) + 10px));
+      }
+      #settings-btn {
+        top: max(120px, calc(env(safe-area-inset-top) + 10px));
       }
     }
     
@@ -598,6 +719,30 @@
   <!-- HUD -->
   <div id="hud" class="hidden">
     <div class="timer" id="timer">0.0s</div>
+  </div>
+
+  <button id="settings-btn" class="ui-hidden" aria-label="Open settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.63l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.95l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.57.23-1.12.54-1.63.95l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.85a.5.5 0 0 0 .12.63l2.03 1.58c-.05.31-.08.63-.08.94s.03.63.08.94l-2.03 1.58a.5.5 0 0 0-.12.63l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.51.41 1.06.72 1.63.95l.36 2.54c.04.24.25.42.49.42h3.84c.24 0 .45-.18.49-.42l.36-2.54a7.2 7.2 0 0 0 1.63-.95l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.63l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"></path></svg>
+  </button>
+  <div id="settings-modal" class="ui-hidden">
+    <div class="settings-panel" role="dialog" aria-modal="true" aria-label="Game settings">
+      <div class="settings-header">
+        <div class="settings-title">Settings</div>
+        <button id="settings-close" type="button" aria-label="Close settings">×</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Music</span>
+        <button id="music-toggle" class="settings-toggle active" type="button">ON</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">FX</span>
+        <button id="fx-toggle" class="settings-toggle active" type="button">ON</button>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Haptics</span>
+        <button id="haptics-toggle" class="settings-toggle active" type="button">ON</button>
+      </div>
+    </div>
   </div>
   
   <!-- Control Buttons (Mobile Only) -->
