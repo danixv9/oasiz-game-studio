@@ -122,6 +122,27 @@ interface AmbientOrb {
   alpha: number;
 }
 
+interface AtmosphereRibbon {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  speed: number;
+  drift: number;
+  phase: number;
+  alpha: number;
+}
+
+interface SpeedLine {
+  baseX: number;
+  baseY: number;
+  length: number;
+  width: number;
+  speed: number;
+  phase: number;
+  sway: number;
+}
+
 interface VisualQualityProfile {
   name: string;
   dprCapMobile: number;
@@ -354,6 +375,8 @@ let bloomIntensity = 0;
 let shakeLife = 0;
 let shakeStrength = 0;
 let ambientOrbs: AmbientOrb[] = [];
+let atmosphereRibbons: AtmosphereRibbon[] = [];
+let speedLines: SpeedLine[] = [];
 let frameMsSmoothed = 16.6667;
 let qualityEvalTimer = 0;
 let qualityCooldown = 0;
@@ -454,6 +477,61 @@ function drawBackground(): void {
     ctx.restore();
   }
 
+  if (atmosphereRibbons.length > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    for (let i = 0; i < atmosphereRibbons.length; i++) {
+      const ribbon = atmosphereRibbons[i];
+      const x =
+        ribbon.x +
+        Math.sin(time * ribbon.drift + ribbon.phase) * (ribbon.width * 0.32);
+      const y =
+        ((ribbon.y + time * ribbon.speed) % (h + ribbon.height * 2)) -
+        ribbon.height;
+      const ribbonGrad = ctx.createRadialGradient(
+        x,
+        y,
+        ribbon.width * 0.05,
+        x,
+        y,
+        ribbon.width,
+      );
+      ribbonGrad.addColorStop(0, hexToRgba(accentColor, ribbon.alpha));
+      ribbonGrad.addColorStop(0.5, hexToRgba(accentColor, ribbon.alpha * 0.25));
+      ribbonGrad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = ribbonGrad;
+      ctx.beginPath();
+      ctx.ellipse(
+        x,
+        y,
+        ribbon.width,
+        ribbon.height,
+        Math.sin(ribbon.phase + time * 0.35) * 0.25,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  const floorGlow = ctx.createRadialGradient(
+    w * 0.5,
+    paddleY + CONFIG.PADDLE_HEIGHT * 0.3,
+    paddleWidth * 0.2,
+    w * 0.5,
+    paddleY + CONFIG.PADDLE_HEIGHT * 0.3,
+    Math.max(w, h) * 0.62,
+  );
+  floorGlow.addColorStop(0, hexToRgba(accentColor, 0.2));
+  floorGlow.addColorStop(0.45, hexToRgba(accentColor, 0.06));
+  floorGlow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.fillStyle = floorGlow;
+  ctx.fillRect(0, h * 0.42, w, h * 0.58);
+  ctx.restore();
+
   if (gameState !== "START") {
     const speedEnergy = clamp(ballSpeedSmoothed / 24, 0, 1);
     const field = ctx.createRadialGradient(
@@ -526,10 +604,57 @@ function drawScore(): void {
   ctx.globalAlpha = 1;
 }
 
+function drawSceneShadows(): void {
+  if (gameState === "START") return;
+
+  const lightX = w * 0.2;
+  const lightY = h * 0.08;
+  const ballAltitude = clamp((paddleY - ballY) / Math.max(1, paddleY), 0, 1);
+  const ballOffsetX = (ballX - lightX) * 0.08;
+  const ballOffsetY = (ballY - lightY) * 0.04;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.beginPath();
+  ctx.ellipse(
+    ballX + ballOffsetX,
+    paddleY + CONFIG.PADDLE_HEIGHT * 0.38 + ballOffsetY,
+    CONFIG.BALL_RADIUS * (0.9 + ballAltitude * 0.7),
+    CONFIG.BALL_RADIUS * (0.26 + ballAltitude * 0.16),
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+
+  for (let i = 0; i < coins.length; i++) {
+    const coin = coins[i];
+    if (coin.collected && coin.collectTime > 200) continue;
+    const bobOffset = Math.sin(visualTime / 300 + coin.phaseOffset) * 5;
+    const coinY = coin.y + bobOffset;
+    const offsetX = (coin.x - lightX) * 0.06;
+    const offsetY = (coinY - lightY) * 0.03;
+    ctx.globalAlpha = coin.collected ? 0.08 : 0.12;
+    ctx.beginPath();
+    ctx.ellipse(
+      coin.x + offsetX,
+      coinY + CONFIG.COIN_SIZE * 0.5 + offsetY,
+      CONFIG.COIN_SIZE * 0.32,
+      CONFIG.COIN_SIZE * 0.12,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawPaddle(): void {
   const px = paddleX;
   const py = paddleY - paddleLiftOffset;
   const speedEnergy = clamp(ballSpeedSmoothed / 28, 0, 1);
+  const impactEnergy = clamp(paddleLiftTime / CONFIG.PADDLE_HIT_DURATION, 0, 1);
   const paddleGlowHeight = CONFIG.PADDLE_HEIGHT * (1.7 + speedEnergy * 0.8);
 
   ctx.save();
@@ -597,6 +722,23 @@ function drawPaddle(): void {
     );
     ctx.fill();
 
+    if (impactEnergy > 0.01) {
+      ctx.globalAlpha = 0.35 + impactEnergy * 0.35;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = 2 + impactEnergy * 3;
+      ctx.beginPath();
+      ctx.ellipse(
+        px,
+        drawY + imgHeight * 0.42,
+        paddleWidth * (0.17 + impactEnergy * 0.06),
+        imgHeight * (0.09 + impactEnergy * 0.04),
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.stroke();
+    }
+
     ctx.restore();
   } else {
     ctx.save();
@@ -620,11 +762,32 @@ function drawPaddle(): void {
     ctx.stroke();
     ctx.restore();
   }
+
+  if (impactEnergy > 0.01) {
+    const contactGlow = ctx.createRadialGradient(
+      px,
+      py,
+      paddleWidth * 0.04,
+      px,
+      py,
+      paddleWidth * 0.24,
+    );
+    contactGlow.addColorStop(0, "rgba(255,255,255," + (0.42 + impactEnergy * 0.32) + ")");
+    contactGlow.addColorStop(0.45, hexToRgba(accentColor, 0.26 + impactEnergy * 0.2));
+    contactGlow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = contactGlow;
+    ctx.fillRect(px - paddleWidth * 0.3, py - paddleWidth * 0.3, paddleWidth * 0.6, paddleWidth * 0.6);
+    ctx.restore();
+  }
 }
 
 function drawBall(): void {
   const speed = Math.hypot(ballVX, ballVY);
   const speedEnergy = clamp(speed / 26, 0, 1);
+  const directionX = speed > 0.001 ? ballVX / speed : 0;
+  const directionY = speed > 0.001 ? ballVY / speed : 1;
   const shadowT = clamp((ballY / h) * 1.2, 0.15, 1);
   const shadowBlur = CONFIG.BALL_SHADOW_SOFTNESS * shadowT * activeQuality.shadowBlurScale;
 
@@ -649,6 +812,27 @@ function drawBall(): void {
     ctx.filter = "none";
   }
   ctx.restore();
+
+  if (speedEnergy > 0.08) {
+    const streakLen = CONFIG.BALL_RADIUS * (4 + speedEnergy * 8);
+    const streakWidth = CONFIG.BALL_RADIUS * (0.55 + speedEnergy * 0.45);
+    const sx = ballX - directionX * streakLen;
+    const sy = ballY - directionY * streakLen;
+    const speedStreak = ctx.createLinearGradient(ballX, ballY, sx, sy);
+    speedStreak.addColorStop(0, "rgba(255,255,255," + (0.18 + speedEnergy * 0.25) + ")");
+    speedStreak.addColorStop(0.45, hexToRgba(accentColor, 0.22 + speedEnergy * 0.2));
+    speedStreak.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.strokeStyle = speedStreak;
+    ctx.lineWidth = streakWidth;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(ballX, ballY);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   for (let i = 0; i < ballTrail.length; i++) {
     const t = ballTrail[i];
@@ -827,7 +1011,18 @@ function drawHitPulse(): void {
   ctx.restore();
 }
 
+function getThreatLevel(): number {
+  if (gameState === "START") return 0;
+  const verticalPressure = clamp((ballY - h * 0.35) / (h * 0.6), 0, 1);
+  const speedPressure = clamp(ballSpeedSmoothed / 28, 0, 1);
+  const scorePressure = clamp(score / 45, 0, 1);
+  return clamp(verticalPressure * 0.55 + speedPressure * 0.35 + scorePressure * 0.18, 0, 1);
+}
+
 function drawPostFx(): void {
+  const threatLevel = getThreatLevel();
+  const speedEnergy = clamp(ballSpeedSmoothed / 28, 0, 1);
+
   ctx.save();
   ctx.globalAlpha = activeQuality.postFxAlpha;
   ctx.drawImage(postFxLayer, 0, 0, w, h);
@@ -859,6 +1054,48 @@ function drawPostFx(): void {
     ctx.globalAlpha = activeQuality.postFxShiftAlpha * amount;
     ctx.drawImage(postFxLayer, -2 * amount, 0, w, h);
     ctx.drawImage(postFxLayer, 2 * amount, 0, w, h);
+  }
+
+  if (threatLevel > 0.02) {
+    const threatGradient = ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.48,
+      Math.min(w, h) * 0.2,
+      w * 0.5,
+      h * 0.5,
+      Math.max(w, h) * 0.95,
+    );
+    threatGradient.addColorStop(0, "rgba(255,120,90,0)");
+    threatGradient.addColorStop(0.72, "rgba(255,120,90,0)");
+    threatGradient.addColorStop(1, "rgba(255,120,90," + (0.08 + threatLevel * 0.16) + ")");
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = threatGradient;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  if (speedEnergy > 0.25 && speedLines.length > 0) {
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.1 + speedEnergy * 0.12;
+    const t = visualTime * 0.001;
+    const direction = ballVX >= 0 ? -1 : 1;
+    for (let i = 0; i < speedLines.length; i++) {
+      const line = speedLines[i];
+      const y = ((line.baseY + t * line.speed * 220 + Math.sin(t * 0.9 + line.phase) * line.sway) % (h + 80)) - 40;
+      const x = ((line.baseX + t * line.speed * 140) % (w + 160)) - 80;
+      const length = line.length * (0.55 + speedEnergy * 0.85);
+      const gx = x + length * direction;
+      const streak = ctx.createLinearGradient(x, y, gx, y);
+      streak.addColorStop(0, "rgba(255,255,255,0)");
+      streak.addColorStop(0.55, "rgba(190,220,255,0.42)");
+      streak.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.strokeStyle = streak;
+      ctx.lineWidth = line.width;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(gx, y);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -1749,6 +1986,42 @@ function rebuildAmbientOrbs(): void {
   }
 }
 
+function rebuildAtmosphereRibbons(): void {
+  atmosphereRibbons = [];
+  const count = Math.max(
+    6,
+    Math.floor((10 + Math.min(8, activeQuality.ambientOrbFactor * 8)) * (Math.min(w, h) / 700)),
+  );
+  for (let i = 0; i < count; i++) {
+    atmosphereRibbons.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      width: 60 + Math.random() * 180,
+      height: 22 + Math.random() * 70,
+      speed: 5 + Math.random() * 14,
+      drift: 0.15 + Math.random() * 0.38,
+      phase: Math.random() * Math.PI * 2,
+      alpha: 0.04 + Math.random() * 0.09,
+    });
+  }
+}
+
+function rebuildSpeedLines(): void {
+  speedLines = [];
+  const count = Math.max(18, Math.floor(28 * (0.7 + activeQuality.bloomScale * 0.5)));
+  for (let i = 0; i < count; i++) {
+    speedLines.push({
+      baseX: Math.random() * w,
+      baseY: Math.random() * h,
+      length: 24 + Math.random() * 90,
+      width: 1 + Math.random() * 2.8,
+      speed: 0.7 + Math.random() * 1.8,
+      phase: Math.random() * Math.PI * 2,
+      sway: 8 + Math.random() * 22,
+    });
+  }
+}
+
 function rebuildPostFxLayer(): void {
   postFxLayer.width = Math.floor(w * dpr);
   postFxLayer.height = Math.floor(h * dpr);
@@ -1863,6 +2136,8 @@ function rebuildCoinSprite(): void {
 function rebuildVisualLayers(): void {
   rebuildBackgroundLayer();
   rebuildAmbientOrbs();
+  rebuildAtmosphereRibbons();
+  rebuildSpeedLines();
   rebuildPostFxLayer();
   rebuildBallSprites();
   rebuildCoinSprite();
@@ -1933,6 +2208,7 @@ function gameLoop(timestamp: number): void {
       if (hitPulseLife < 0) hitPulseLife = 0;
     }
 
+    drawSceneShadows();
     drawScore();
     drawPaddle();
     drawCoins();
@@ -1945,6 +2221,7 @@ function gameLoop(timestamp: number): void {
     drawPaddle();
   } else if (gameState === "PAUSED" || gameState === "GAME_OVER") {
     // Draw frozen state
+    drawSceneShadows();
     drawScore();
     drawPaddle();
     drawCoins();

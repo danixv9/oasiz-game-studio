@@ -333,6 +333,12 @@ function easeOutBack(t: number): number {
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 
+function getDangerPressure(): number {
+  if (groundY <= CONFIG.DANGER_ZONE_START) return 0;
+  const progress = (dangerZoneY - CONFIG.DANGER_ZONE_START) / (groundY - CONFIG.DANGER_ZONE_START);
+  return Math.max(0, Math.min(1, progress));
+}
+
 // ============= AUDIO =============
 let audioContext: AudioContext | null = null;
 let bgMusic: HTMLAudioElement | null = null;
@@ -612,6 +618,9 @@ function drawBackground(): void {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, w, h);
 
+  drawSkyBands(theme);
+  drawAtmosphericClouds(theme);
+
   // Distant mountains/hills silhouette
   drawMountains(theme);
 
@@ -748,6 +757,36 @@ function drawPlayer(): void {
   const py = player.y;
   const pw = CONFIG.PLAYER_WIDTH;
   const ph = CONFIG.PLAYER_HEIGHT;
+  const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+
+  // Grounded contact shadow
+  const shadowWidth = pw * (0.75 + Math.min(0.35, Math.abs(player.vx) * 0.05));
+  const shadowHeight = 8 + Math.min(5, Math.abs(player.vx));
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.26)";
+  ctx.beginPath();
+  ctx.ellipse(px + pw / 2 + player.vx * 0.6, groundY - 2, shadowWidth, shadowHeight, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Velocity trail at high speed
+  if (speed > 2.2) {
+    const dirX = speed > 0 ? -player.vx / speed : 0;
+    const dirY = speed > 0 ? -player.vy / speed : 0;
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.35, speed * 0.08);
+    for (let i = 0; i < 3; i++) {
+      const t = (i + 1) / 3;
+      const trailX = px + pw / 2 + dirX * (8 + t * 12);
+      const trailY = py + ph / 2 + dirY * (4 + t * 7);
+      const trailSize = pw * (0.26 + t * 0.13);
+      ctx.fillStyle = "rgba(128, 210, 255, " + (0.2 - t * 0.045) + ")";
+      ctx.beginPath();
+      ctx.ellipse(trailX, trailY, trailSize, trailSize * 0.58, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
   ctx.save();
 
@@ -892,6 +931,28 @@ function drawSaw(saw: SawBlade): void {
   const cx = saw.x;
   const cy = saw.y;
   const size = (CONFIG.SAW_SIZE / 2) * saw.scale;
+  const speed = Math.sqrt(saw.vx * saw.vx + saw.vy * saw.vy);
+
+  // Motion streak for fast saws
+  if (!saw.exploding && speed > 1.5) {
+    const trailAngle = Math.atan2(saw.vy, saw.vx) + Math.PI;
+    const trailLength = size * (0.9 + speed * 0.5);
+    const x2 = cx + Math.cos(trailAngle) * trailLength;
+    const y2 = cy + Math.sin(trailAngle) * trailLength;
+    const streakGradient = ctx.createLinearGradient(cx, cy, x2, y2);
+    streakGradient.addColorStop(0, "rgba(255,255,255,0.28)");
+    streakGradient.addColorStop(0.4, "rgba(180,220,255,0.22)");
+    streakGradient.addColorStop(1, "rgba(120,180,255,0)");
+    ctx.save();
+    ctx.strokeStyle = streakGradient;
+    ctx.lineWidth = 4 + speed * 0.22;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.translate(cx, cy);
@@ -979,6 +1040,15 @@ function drawSaw(saw: SawBlade): void {
 
   ctx.closePath();
   ctx.fill();
+
+  // Metallic rim highlight
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.lineWidth = Math.max(1, size * 0.08);
+  ctx.globalAlpha = 0.45;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.76, -Math.PI * 0.9, -Math.PI * 0.25);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 
   // Style-specific details
   if (saw.style === "steampunk" && !saw.exploding) {
@@ -1143,6 +1213,123 @@ function drawFlashEffect(): void {
     ctx.globalAlpha = screenFlash * 0.4;
     ctx.fillRect(0, 0, w, h);
     ctx.globalAlpha = 1;
+  }
+}
+
+function drawWorldShadows(): void {
+  const lightX = w * (0.18 + Math.sin(gameTime * 0.00021 + round * 0.4) * 0.08);
+  const lightY = h * 0.08;
+  const dangerPressure = getDangerPressure();
+  const strength = 0.16 + dangerPressure * 0.1;
+
+  ctx.save();
+  ctx.globalAlpha = strength;
+  ctx.fillStyle = "#000000";
+
+  // Player shadow
+  const pCenterX = player.x + CONFIG.PLAYER_WIDTH / 2;
+  const pCenterY = player.y + CONFIG.PLAYER_HEIGHT / 2;
+  const playerOffsetX = (pCenterX - lightX) * 0.06;
+  const playerOffsetY = (pCenterY - lightY) * 0.04;
+  ctx.beginPath();
+  ctx.ellipse(
+    pCenterX + playerOffsetX,
+    groundY - 2 + playerOffsetY * 0.25,
+    CONFIG.PLAYER_WIDTH * 0.58,
+    9,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+
+  // Saw shadows
+  for (const saw of saws) {
+    const altitude = Math.max(0, groundY - saw.y);
+    const fade = Math.max(0.05, 1 - altitude / (h * 0.85));
+    const offsetX = (saw.x - lightX) * 0.08;
+    const offsetY = (saw.y - lightY) * 0.06;
+    const radius = (CONFIG.SAW_SIZE / 2) * saw.scale;
+
+    ctx.globalAlpha = strength * fade;
+    ctx.beginPath();
+    ctx.ellipse(
+      saw.x + offsetX,
+      groundY - 1 + offsetY * 0.15,
+      radius * (0.7 + fade * 0.24),
+      radius * 0.24,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCombatPostFx(): void {
+  const dangerPressure = getDangerPressure();
+  const velocityPressure = Math.min(1, Math.abs(player.vx) / 8 + Math.abs(player.vy) / 20);
+  const sawPressure = Math.min(1, saws.length / (CONFIG.MAX_SAWS_ON_SCREEN + 3));
+
+  // Vignette
+  const vignette = ctx.createRadialGradient(
+    w * 0.5,
+    h * 0.48,
+    Math.min(w, h) * 0.2,
+    w * 0.5,
+    h * 0.5,
+    Math.max(w, h) * 0.85,
+  );
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(0.7, "rgba(0,0,0,0.08)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.24)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
+
+  // Danger edge tint
+  if (dangerPressure > 0.05) {
+    const edgeAlpha = 0.08 + dangerPressure * 0.22;
+    const edge = ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.35,
+      Math.min(w, h) * 0.22,
+      w * 0.5,
+      h * 0.5,
+      Math.max(w, h) * 0.95,
+    );
+    edge.addColorStop(0, "rgba(255, 96, 96, 0)");
+    edge.addColorStop(0.62, "rgba(255, 72, 72, 0)");
+    edge.addColorStop(1, "rgba(255, 72, 72, " + edgeAlpha + ")");
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // Speed sweep lines
+  if (gameState === "PLAYING" && velocityPressure + sawPressure > 0.35) {
+    const intensity = Math.min(1, velocityPressure * 0.7 + sawPressure * 0.6);
+    const lineCount = 12 + Math.floor(intensity * 16);
+    const dirX = player.vx === 0 ? 1 : player.vx > 0 ? -1 : 1;
+
+    ctx.save();
+    ctx.globalAlpha = 0.05 + intensity * 0.1;
+    for (let i = 0; i < lineCount; i++) {
+      const wave = gameTime * (0.0012 + (i % 6) * 0.00016);
+      const y = ((i * 53 + wave * 1000) % (h + 40)) - 20;
+      const x = ((i * 137 + wave * 780) % (w + 220)) - 110;
+      const len = 40 + intensity * 90 + (i % 4) * 14;
+      const gradient = ctx.createLinearGradient(x, y, x + len * dirX, y);
+      gradient.addColorStop(0, "rgba(255,255,255,0)");
+      gradient.addColorStop(0.6, "rgba(190,230,255,0.45)");
+      gradient.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 1 + (i % 3);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + len * dirX, y);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 }
 
@@ -1977,6 +2164,66 @@ function closeSettings(): void {
   }
 }
 
+function drawSkyBands(theme: typeof CONFIG.BG_THEMES[0]): void {
+  const pulse = 0.45 + Math.sin(gameTime * 0.00035 + round * 0.8) * 0.18;
+  const topBand = ctx.createLinearGradient(0, 0, w, h * 0.42);
+  topBand.addColorStop(0, "rgba(255,255,255,0.08)");
+  topBand.addColorStop(0.4, "rgba(255,255,255,0.02)");
+  topBand.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = topBand;
+  ctx.globalAlpha = 0.7;
+  ctx.fillRect(0, 0, w, h * 0.5);
+
+  const accentBand = ctx.createRadialGradient(
+    w * (0.35 + Math.sin(gameTime * 0.00018 + round * 0.35) * 0.07),
+    h * 0.22,
+    h * 0.06,
+    w * 0.5,
+    h * 0.25,
+    h * 0.65,
+  );
+  accentBand.addColorStop(0, theme.consoleLight + Math.floor((0.25 + pulse * 0.2) * 255).toString(16).padStart(2, "0"));
+  accentBand.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = accentBand;
+  ctx.globalAlpha = 0.35;
+  ctx.fillRect(0, 0, w, h * 0.7);
+  ctx.globalAlpha = 1;
+}
+
+function drawAtmosphericClouds(theme: typeof CONFIG.BG_THEMES[0]): void {
+  const cloudColor = theme.bg;
+  const cloudBaseY = h * 0.1;
+  const travel = gameTime * 0.012;
+
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  for (let i = 0; i < 7; i++) {
+    const seed = i * 1.73 + round * 0.93;
+    const width = w * (0.12 + (i % 3) * 0.03);
+    const height = h * (0.035 + (i % 2) * 0.014);
+    const wave = Math.sin(seed * 1.5 + gameTime * 0.00042) * h * 0.018;
+    const x = ((i * 179 + travel * (0.65 + (i % 4) * 0.12)) % (w + width * 1.8)) - width * 0.9;
+    const y = cloudBaseY + (i * h * 0.075) + wave;
+
+    const cloudGradient = ctx.createRadialGradient(
+      x,
+      y,
+      width * 0.08,
+      x,
+      y,
+      width * 0.75,
+    );
+    cloudGradient.addColorStop(0, cloudColor + "cc");
+    cloudGradient.addColorStop(1, cloudColor + "00");
+
+    ctx.fillStyle = cloudGradient;
+    ctx.beginPath();
+    ctx.ellipse(x, y, width, height, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // ============= INPUT HANDLERS =============
 function setupInputHandlers(): void {
   // Keyboard
@@ -2162,6 +2409,9 @@ function gameLoop(timestamp: number): void {
   // Clear and draw
   ctx.clearRect(-20, -20, w + 40, h + 40);
   drawBackground();
+  if (gameState !== "START") {
+    drawWorldShadows();
+  }
 
   if (gameState === "PLAYING") {
     // Spawn saws (limit how many can be on screen) - time based, not physics
@@ -2194,6 +2444,7 @@ function gameLoop(timestamp: number): void {
     drawParticles();
     drawScorePopups();
     drawFlashEffect();
+    drawCombatPostFx();
     drawHUD();
 
   } else if (gameState === "START") {
@@ -2212,6 +2463,7 @@ function gameLoop(timestamp: number): void {
     drawScorePopups();
     updateScorePopups(frameTime);
     drawFlashEffect();
+    drawCombatPostFx();
     drawHUD();
     accumulator = 0; // Reset accumulator when paused
   }

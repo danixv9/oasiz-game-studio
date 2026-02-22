@@ -313,6 +313,15 @@ const BIOME_COLORS: Record<BiomeType, {
   },
 };
 
+const BIOME_ATMOSPHERE: Record<BiomeType, { core: string; edge: string }> = {
+  desert: { core: "rgba(255, 194, 120, 0.24)", edge: "rgba(141, 97, 58, 0.22)" },
+  forest: { core: "rgba(116, 211, 122, 0.18)", edge: "rgba(30, 66, 31, 0.2)" },
+  snow: { core: "rgba(188, 228, 255, 0.22)", edge: "rgba(76, 112, 148, 0.18)" },
+  city: { core: "rgba(186, 205, 255, 0.18)", edge: "rgba(56, 62, 84, 0.22)" },
+  beach: { core: "rgba(124, 234, 255, 0.2)", edge: "rgba(37, 102, 112, 0.2)" },
+  volcanic: { core: "rgba(255, 122, 92, 0.22)", edge: "rgba(90, 28, 18, 0.24)" },
+};
+
 // Player/Police colors
 const COLORS = {
   playerCar: "#c8c8c8",
@@ -467,6 +476,48 @@ const settings: Settings = {
   fx: true,
   haptics: true,
 };
+
+const SETTINGS_STORAGE_KEY = "policeChase_settings_v1";
+
+function loadLocalSettings(): Settings {
+  const fallback: Settings = { music: true, fx: true, haptics: true };
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    return {
+      music: parsed.music !== false,
+      fx: parsed.fx !== false,
+      haptics: parsed.haptics !== false,
+    };
+  } catch (error) {
+    console.log("[loadLocalSettings] Failed to parse settings", error);
+    return fallback;
+  }
+}
+
+function saveLocalSettings(): void {
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+}
+
+function syncSettingsUI(): void {
+  const mappings: Array<{ id: string; enabled: boolean }> = [
+    { id: "toggle-music", enabled: settings.music },
+    { id: "toggle-fx", enabled: settings.fx },
+    { id: "toggle-haptics", enabled: settings.haptics },
+  ];
+
+  for (const mapping of mappings) {
+    const toggle = document.getElementById(mapping.id);
+    if (!toggle) continue;
+    toggle.classList.toggle("active", mapping.enabled);
+    toggle.setAttribute("aria-pressed", mapping.enabled ? "true" : "false");
+    const textEl = toggle.querySelector(".toggle-text");
+    if (textEl) {
+      textEl.textContent = mapping.enabled ? "On" : "Off";
+    }
+  }
+}
 
 // Background music
 const MUSIC_URL = "https://oasiz-assets.vercel.app/audio/car-song.mp3";
@@ -654,6 +705,10 @@ function init(): void {
   ctx = canvas.getContext("2d")!;
 
   isMobile = window.matchMedia("(pointer: coarse)").matches;
+  const localSettings = loadLocalSettings();
+  settings.music = localSettings.music;
+  settings.fx = localSettings.fx;
+  settings.haptics = localSettings.haptics;
 
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
@@ -1177,6 +1232,71 @@ function setupUIHandlers(): void {
     triggerHaptic("light");
     restartGame();
   });
+
+  const settingsBtn = document.getElementById("settings-btn");
+  const settingsModal = document.getElementById("settings-modal");
+  const settingsClose = document.getElementById("settings-close");
+  const musicToggle = document.getElementById("toggle-music");
+  const fxToggle = document.getElementById("toggle-fx");
+  const hapticsToggle = document.getElementById("toggle-haptics");
+
+  const closeSettings = (): void => {
+    if (!settingsModal) return;
+    settingsModal.classList.add("hidden");
+    console.log("[closeSettings] Closed");
+  };
+
+  const openSettings = (): void => {
+    if (!settingsModal || gamePhase !== "playing") return;
+    settingsModal.classList.remove("hidden");
+    console.log("[openSettings] Opened");
+  };
+
+  settingsBtn?.addEventListener("click", () => {
+    triggerHaptic("light");
+    openSettings();
+  });
+
+  settingsClose?.addEventListener("click", () => {
+    triggerHaptic("light");
+    closeSettings();
+  });
+
+  settingsModal?.addEventListener("click", (event) => {
+    if (event.target === settingsModal) {
+      closeSettings();
+    }
+  });
+
+  musicToggle?.addEventListener("click", () => {
+    settings.music = !settings.music;
+    saveLocalSettings();
+    syncSettingsUI();
+    if (settings.music && gamePhase === "playing") {
+      playMusic();
+    } else if (!settings.music) {
+      pauseMusic();
+    }
+    triggerHaptic("light");
+  });
+
+  fxToggle?.addEventListener("click", () => {
+    settings.fx = !settings.fx;
+    saveLocalSettings();
+    syncSettingsUI();
+    triggerHaptic("light");
+  });
+
+  hapticsToggle?.addEventListener("click", () => {
+    settings.haptics = !settings.haptics;
+    saveLocalSettings();
+    syncSettingsUI();
+    if (settings.haptics && getOasizSettings().haptics && typeof (window as any).triggerHaptic === "function") {
+      (window as any).triggerHaptic("light");
+    }
+  });
+
+  syncSettingsUI();
   
   // Vehicle selection
   const vehicleCards = document.querySelectorAll(".vehicle-card");
@@ -1342,6 +1462,9 @@ function startGame(): void {
 
   document.getElementById("start-screen")!.classList.add("hidden");
   document.getElementById("hud")!.classList.remove("hidden");
+  document.getElementById("settings-btn")?.classList.remove("hidden");
+  document.getElementById("mobile-controls")?.classList.remove("hidden");
+  document.getElementById("settings-modal")?.classList.add("hidden");
 
   // Start background music
   playMusic();
@@ -1370,6 +1493,9 @@ function endGame(): void {
   screenShake = SHAKE_INTENSITY * 2;
 
   document.getElementById("hud")!.classList.add("hidden");
+  document.getElementById("settings-btn")?.classList.add("hidden");
+  document.getElementById("mobile-controls")?.classList.add("hidden");
+  document.getElementById("settings-modal")?.classList.add("hidden");
   
   // Display time survived in MM:SS format
   const totalSeconds = Math.floor(gameTime / 1000);
@@ -2130,6 +2256,85 @@ function drawPostFx(): void {
         ctx.drawImage(grainTile, x, y, tileSize, tileSize);
       }
     }
+    ctx.restore();
+  }
+
+  if (gamePhase === "start" || !player) return;
+
+  const speedRatio = Math.min(1, Math.abs(player.speed) / Math.max(1, player.maxSpeed));
+  const pursuitPressure = Math.min(1, policeCars.length / Math.max(1, MAX_POLICE));
+  const atmosphere = BIOME_ATMOSPHERE[getBiomeAt(player.x, player.y)];
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 0.2 + speedRatio * 0.1;
+  const atmosphereGradient = ctx.createRadialGradient(
+    w * 0.52,
+    h * 0.4,
+    Math.min(w, h) * 0.15,
+    w * 0.5,
+    h * 0.5,
+    Math.max(w, h) * 0.75,
+  );
+  atmosphereGradient.addColorStop(0, atmosphere.core);
+  atmosphereGradient.addColorStop(1, atmosphere.edge);
+  ctx.fillStyle = atmosphereGradient;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  if (speedRatio > 0.55 && gamePhase === "playing") {
+    const streakStrength = Math.min(1, (speedRatio - 0.55) / 0.45);
+    const headingX = Math.cos(player.angle);
+    const headingY = Math.sin(player.angle);
+    const streakLength = w * (0.1 + streakStrength * 0.24);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.1 + streakStrength * 0.14;
+
+    for (let i = 0; i < 24; i++) {
+      const driftPhase = gameTime * (0.0018 + (i % 5) * 0.00012);
+      const baseX = ((i * 173.3 + driftPhase * 1200) % (w + 220)) - 110;
+      const baseY = ((i * 97.7 + driftPhase * 690 + Math.sin(i * 1.8 + gameTime * 0.002) * 26) % (h + 220)) - 110;
+      const width = 1 + (i % 3);
+      const dx = headingX * streakLength;
+      const dy = headingY * streakLength;
+      const streakGradient = ctx.createLinearGradient(
+        baseX - dx * 0.35,
+        baseY - dy * 0.35,
+        baseX + dx * 0.65,
+        baseY + dy * 0.65,
+      );
+      streakGradient.addColorStop(0, "rgba(130, 190, 255, 0)");
+      streakGradient.addColorStop(0.55, "rgba(180, 220, 255, 0.52)");
+      streakGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+      ctx.strokeStyle = streakGradient;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(baseX - dx * 0.35, baseY - dy * 0.35);
+      ctx.lineTo(baseX + dx * 0.65, baseY + dy * 0.65);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  if (pursuitPressure > 0.35 && gamePhase === "playing") {
+    const threatStrength = (pursuitPressure - 0.35) / 0.65;
+    ctx.save();
+    const threatGradient = ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.5,
+      Math.min(w, h) * 0.2,
+      w * 0.5,
+      h * 0.5,
+      Math.max(w, h) * 0.72,
+    );
+    threatGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+    threatGradient.addColorStop(0.55, "rgba(255, 70, 70, 0)");
+    threatGradient.addColorStop(1, "rgba(255, 70, 70, " + (0.08 + threatStrength * 0.16) + ")");
+    ctx.fillStyle = threatGradient;
+    ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
 }

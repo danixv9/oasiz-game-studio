@@ -1344,7 +1344,17 @@ class PaperPlaneGame {
   playerScaleX: number = 1;
   playerScaleY: number = 1;
   juiceTimer: number = 0;
-  bgDoodles: {x: number, y: number, text: string, scale: number, rotation: number, speed: number}[] = [];
+  bgDoodles: {
+    x: number;
+    y: number;
+    text: string;
+    scale: number;
+    rotation: number;
+    speed: number;
+    drift: number;
+    phase: number;
+    xWrapStep: number;
+  }[] = [];
 
   constructor() {
     console.log("[PaperPlaneGame] Initializing");
@@ -4645,16 +4655,34 @@ class PaperPlaneGame {
         text: doodleTypes[Math.floor(Math.random() * doodleTypes.length)],
         scale: 0.4 + Math.random() * 1.6,
         rotation: (Math.random() - 0.5) * 0.8,
-        speed: 15 + Math.random() * 45
+        speed: 15 + Math.random() * 45,
+        drift: 6 + Math.random() * 20,
+        phase: Math.random() * Math.PI * 2,
+        xWrapStep: 120 + Math.random() * 240,
       });
     }
   }
 
   drawBackground(): void {
     const ctx = this.ctx;
+    const threatLevel = this.getThreatLevel();
 
     // Paper background
     ctx.fillStyle = CONFIG.PAPER_BG;
+    ctx.fillRect(0, 0, this.w, this.h);
+
+    const paperLight = ctx.createRadialGradient(
+      this.w * (0.28 + Math.sin(this.survivalTime * 0.00012) * 0.1),
+      this.h * 0.22,
+      this.w * 0.06,
+      this.w * 0.5,
+      this.h * 0.5,
+      Math.max(this.w, this.h) * 0.85,
+    );
+    paperLight.addColorStop(0, "rgba(255,255,255,0.36)");
+    paperLight.addColorStop(0.6, "rgba(255,255,255,0.08)");
+    paperLight.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = paperLight;
     ctx.fillRect(0, 0, this.w, this.h);
 
     // Scrolling grid lines
@@ -4678,32 +4706,106 @@ class PaperPlaneGame {
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(60, 0); ctx.lineTo(60, this.h); ctx.stroke();
 
+    this.drawCloudWash();
+
     // Draw background doodles (parallax)
     ctx.fillStyle = "rgba(45, 45, 45, 0.08)";
     ctx.font = "bold 24px 'Caveat', cursive";
     this.bgDoodles.forEach(d => {
       d.y += d.speed * 0.016;
+      d.phase += 0.0035;
       if (d.y > this.h + 50) {
         d.y = -50;
-        d.x = Math.random() * this.w;
+        d.x = (d.x + d.xWrapStep + d.speed * 0.65) % this.w;
       }
+      const driftX = Math.sin(d.phase + this.survivalTime * 0.0006) * d.drift;
       ctx.save();
-      ctx.translate(d.x, d.y);
+      ctx.translate(d.x + driftX, d.y);
       ctx.rotate(d.rotation);
       ctx.scale(d.scale, d.scale);
       ctx.fillText(d.text, 0, 0);
       ctx.restore();
     });
+
+    if (threatLevel > 0.05) {
+      const warningGradient = ctx.createRadialGradient(
+        this.w * 0.5,
+        this.h * 0.45,
+        this.w * 0.2,
+        this.w * 0.5,
+        this.h * 0.5,
+        Math.max(this.w, this.h) * 0.85,
+      );
+      warningGradient.addColorStop(0, "rgba(255, 80, 80, 0)");
+      warningGradient.addColorStop(0.7, "rgba(255, 80, 80, 0)");
+      warningGradient.addColorStop(1, "rgba(255, 80, 80, " + (0.04 + threatLevel * 0.14) + ")");
+      ctx.fillStyle = warningGradient;
+      ctx.fillRect(0, 0, this.w, this.h);
+    }
+  }
+
+  drawCloudWash(): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    for (let i = 0; i < 7; i++) {
+      const bandY = this.h * (0.1 + i * 0.11);
+      const width = this.w * (0.22 + (i % 3) * 0.08);
+      const height = this.h * (0.03 + (i % 2) * 0.014);
+      const driftPhase = this.survivalTime * (0.0002 + i * 0.00003) + i * 1.4;
+      const x = ((i * 213 + driftPhase * 740) % (this.w + width * 2)) - width;
+      const y = bandY + Math.sin(driftPhase) * this.h * 0.015;
+      const g = ctx.createRadialGradient(x, y, width * 0.08, x, y, width);
+      g.addColorStop(0, "rgba(255,255,255,0.28)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(x, y, width, height, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  getThreatLevel(): number {
+    const asteroidPressure = Math.min(1, this.asteroids.length / 18);
+    const bossPressure = this.gameState === "BOSS" && this.boss ? 0.55 : 0;
+    const damagePressure = this.lives <= 1 ? 0.35 : this.lives <= 2 ? 0.16 : 0;
+    return Math.min(1, asteroidPressure * 0.75 + bossPressure + damagePressure);
   }
 
   drawPlayer(): void {
     const ctx = this.ctx;
     const x = this.playerX;
     const y = this.playerY;
+    const speed = Math.hypot(this.playerVelocityX, this.playerVelocityY);
 
     // Invincibility blink effect - skip drawing on odd frames
     if (this.isInvincible && Math.floor(this.damageFlashTimer) % 2 === 1) {
       return;
+    }
+
+    const trailStrength = Math.min(1, speed / 7);
+    if (trailStrength > 0.08) {
+      const dirX = speed > 0 ? -this.playerVelocityX / speed : 0;
+      const dirY = speed > 0 ? -this.playerVelocityY / speed : 1;
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = 0.08 + trailStrength * 0.24;
+      for (let i = 0; i < 4; i++) {
+        const t = (i + 1) / 4;
+        const tx = x + dirX * (10 + t * 22);
+        const ty = y + dirY * (8 + t * 20);
+        const rX = 9 + t * 12;
+        const rY = 4 + t * 5;
+        const trailGradient = ctx.createRadialGradient(tx, ty, 0, tx, ty, rX * 1.8);
+        trailGradient.addColorStop(0, "rgba(140,220,255,0.5)");
+        trailGradient.addColorStop(1, "rgba(140,220,255,0)");
+        ctx.fillStyle = trailGradient;
+        ctx.beginPath();
+        ctx.ellipse(tx, ty, rX, rY, Math.atan2(this.playerVelocityY, this.playerVelocityX), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     }
 
     ctx.save();
@@ -4734,6 +4836,15 @@ class PaperPlaneGame {
     ctx.shadowColor = "rgba(0,0,0,0.1)";
     ctx.shadowBlur = 10;
     ctx.shadowOffsetY = 15;
+
+    // Soft engine glow on fast movement
+    if (trailStrength > 0.2) {
+      const glowAlpha = 0.15 + trailStrength * 0.18;
+      ctx.fillStyle = "rgba(120, 220, 255, " + glowAlpha + ")";
+      ctx.beginPath();
+      ctx.ellipse(0, 22, 18 + trailStrength * 10, 8 + trailStrength * 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     if (this.selectedPlane === "dart") {
       // Classic pointed dart - hand-drawn variation
@@ -4837,6 +4948,31 @@ class PaperPlaneGame {
     const ctx = this.ctx;
 
     for (const b of this.bullets) {
+      const bulletSpeed = Math.hypot(b.vx, b.vy);
+      const normX = bulletSpeed > 0 ? b.vx / bulletSpeed : 0;
+      const normY = bulletSpeed > 0 ? b.vy / bulletSpeed : -1;
+      const trailLength = (10 + bulletSpeed * 2.8) * b.size;
+      const trailWidth = (2 + bulletSpeed * 0.22) * b.size;
+      const trailAlpha = 0.08 + Math.min(0.2, b.age * 0.3);
+      const trailGradient = ctx.createLinearGradient(
+        b.x,
+        b.y,
+        b.x - normX * trailLength,
+        b.y - normY * trailLength,
+      );
+      trailGradient.addColorStop(0, "rgba(255,255,255," + (trailAlpha + 0.12) + ")");
+      trailGradient.addColorStop(0.5, "rgba(150,210,255," + trailAlpha + ")");
+      trailGradient.addColorStop(1, "rgba(150,210,255,0)");
+      ctx.save();
+      ctx.strokeStyle = trailGradient;
+      ctx.lineWidth = trailWidth;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - normX * trailLength, b.y - normY * trailLength);
+      ctx.stroke();
+      ctx.restore();
+
       ctx.save();
       ctx.translate(b.x, b.y);
       ctx.rotate(Math.atan2(b.vy, b.vx) + Math.PI / 2);
@@ -4933,6 +5069,17 @@ class PaperPlaneGame {
 
     for (const a of this.asteroids) {
       const config = CONFIG.ASTEROID_SIZES[a.size];
+      const depthFactor = Math.max(0.12, Math.min(1, a.y / (this.h * 0.95)));
+      const shadowRadiusX = config.radius * (0.55 + depthFactor * 0.28);
+      const shadowRadiusY = config.radius * (0.2 + depthFactor * 0.1);
+      const shadowOffsetY = 18 + (1 - depthFactor) * 16;
+
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0," + (0.08 + depthFactor * 0.1) + ")";
+      ctx.beginPath();
+      ctx.ellipse(a.x, a.y + shadowOffsetY, shadowRadiusX, shadowRadiusY, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
 
       ctx.save();
       ctx.translate(a.x, a.y);
@@ -4972,6 +5119,15 @@ class PaperPlaneGame {
       ctx.fill();
       ctx.stroke();
 
+      // Edge highlight for paper sheen
+      const highlightPhase = this.survivalTime * 0.001 + a.id * 0.7;
+      const highlightAlpha = 0.15 + Math.sin(highlightPhase) * 0.08;
+      ctx.strokeStyle = "rgba(255,255,255," + Math.max(0.05, highlightAlpha) + ")";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, config.radius * 0.72, -Math.PI * 0.95, -Math.PI * 0.22);
+      ctx.stroke();
+
       // Crinkle lines inside the asteroid
       ctx.strokeStyle = "rgba(45, 45, 45, 0.15)";
       ctx.lineWidth = 1.5;
@@ -4993,6 +5149,78 @@ class PaperPlaneGame {
       ctx.fillStyle = "rgba(45, 45, 45, 0.8)";
       ctx.fillText(a.health.toString(), 0, 2);
 
+      ctx.restore();
+    }
+  }
+
+  drawWorldShadows(): void {
+    const ctx = this.ctx;
+    const playerShadowWidth = 24 + Math.min(18, Math.abs(this.playerVelocityX) * 2.2);
+    const playerShadowHeight = 8 + Math.min(5, Math.abs(this.playerVelocityY) * 2);
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(this.playerX, this.playerY + 36, playerShadowWidth, playerShadowHeight, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawCombatPostFx(): void {
+    const ctx = this.ctx;
+    const threatLevel = this.getThreatLevel();
+    const speedLevel = Math.min(1, Math.hypot(this.playerVelocityX, this.playerVelocityY) / 7);
+
+    const vignette = ctx.createRadialGradient(
+      this.w * 0.5,
+      this.h * 0.45,
+      Math.min(this.w, this.h) * 0.2,
+      this.w * 0.5,
+      this.h * 0.5,
+      Math.max(this.w, this.h) * 0.92,
+    );
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(0.65, "rgba(0,0,0,0.08)");
+    vignette.addColorStop(1, "rgba(0,0,0,0.22)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, this.w, this.h);
+
+    if (threatLevel > 0.04) {
+      const threat = ctx.createRadialGradient(
+        this.w * 0.5,
+        this.h * 0.5,
+        Math.min(this.w, this.h) * 0.25,
+        this.w * 0.5,
+        this.h * 0.5,
+        Math.max(this.w, this.h) * 0.9,
+      );
+      threat.addColorStop(0, "rgba(255, 90, 90, 0)");
+      threat.addColorStop(0.65, "rgba(255, 90, 90, 0)");
+      threat.addColorStop(1, "rgba(255, 90, 90, " + (0.08 + threatLevel * 0.2) + ")");
+      ctx.fillStyle = threat;
+      ctx.fillRect(0, 0, this.w, this.h);
+    }
+
+    if (speedLevel > 0.22) {
+      const lines = 10 + Math.floor(speedLevel * 12);
+      const dir = this.playerVelocityX >= 0 ? 1 : -1;
+      ctx.save();
+      ctx.globalAlpha = 0.06 + speedLevel * 0.08;
+      for (let i = 0; i < lines; i++) {
+        const phase = this.survivalTime * (0.0009 + i * 0.00003) + i * 0.7;
+        const y = ((i * 64 + phase * 900) % (this.h + 50)) - 25;
+        const x = ((i * 183 + phase * 470) % (this.w + 140)) - 70;
+        const length = 35 + speedLevel * 70 + (i % 4) * 10;
+        const g = ctx.createLinearGradient(x, y, x + length * dir, y);
+        g.addColorStop(0, "rgba(255,255,255,0)");
+        g.addColorStop(0.5, "rgba(180,220,255,0.35)");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 1 + (i % 3);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + length * dir, y);
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }
@@ -5361,6 +5589,7 @@ class PaperPlaneGame {
       this.gameState === "GAME_OVER" ||
       this.gameState === "BOSS"
     ) {
+      this.drawWorldShadows();
       this.drawAsteroids();
       this.drawBullets();
       this.drawDrones();
@@ -5381,6 +5610,17 @@ class PaperPlaneGame {
     }
 
     ctx.restore();
+
+    if (
+      this.gameState === "PLAYING" ||
+      this.gameState === "PAUSED" ||
+      this.gameState === "UPGRADE" ||
+      this.gameState === "ABILITY_CHOICE" ||
+      this.gameState === "GAME_OVER" ||
+      this.gameState === "BOSS"
+    ) {
+      this.drawCombatPostFx();
+    }
   }
 
   drawBoss(): void {

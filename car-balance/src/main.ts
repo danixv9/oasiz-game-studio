@@ -224,6 +224,27 @@ interface WaterParticle {
   maxLife: number;
 }
 
+interface AtmosphereCloud {
+  x: number;
+  y: number;
+  radiusX: number;
+  radiusY: number;
+  speed: number;
+  drift: number;
+  phase: number;
+  alpha: number;
+}
+
+interface SpeedStreak {
+  baseX: number;
+  baseY: number;
+  length: number;
+  width: number;
+  speed: number;
+  sway: number;
+  phase: number;
+}
+
 interface CarComposite {
   composite: Matter.Composite;
   body: Matter.Body;
@@ -292,6 +313,22 @@ const SKY_COLORS = [
 
 let currentSkyColor = SKY_COLORS[0];
 
+function darkenColor(hex: string, amount: number): string {
+  const value = parseInt(hex.slice(1), 16);
+  const red = Math.max(0, ((value >> 16) & 255) - amount);
+  const green = Math.max(0, ((value >> 8) & 255) - amount);
+  const blue = Math.max(0, (value & 255) - amount);
+  return '#' + ((red << 16) | (green << 8) | blue).toString(16).padStart(6, '0');
+}
+
+function lightenColor(hex: string, amount: number): string {
+  const value = parseInt(hex.slice(1), 16);
+  const red = Math.min(255, ((value >> 16) & 255) + amount);
+  const green = Math.min(255, ((value >> 8) & 255) + amount);
+  const blue = Math.min(255, (value & 255) + amount);
+  return '#' + ((red << 16) | (green << 8) | blue).toString(16).padStart(6, '0');
+}
+
 // ============================================================================
 // GAME STATE
 // ============================================================================
@@ -319,6 +356,8 @@ let audioContext: AudioContext | null = null;
 let themeMusic: HTMLAudioElement | null = null;
 let gameOverMusic: HTMLAudioElement | null = null;
 let waterParticles: WaterParticle[] = [];
+let atmosphereClouds: AtmosphereCloud[] = [];
+let speedStreaks: SpeedStreak[] = [];
 
 let holdingLeft = false;
 let holdingRight = false;
@@ -609,6 +648,40 @@ function resizeCanvas(): void {
     Body.setPosition(barBody, { x: pivotX, y: pivotY });
     // Re-scale the bar (would need to recreate it for proper scaling)
   }
+
+  rebuildVisualAtmosphere();
+}
+
+function rebuildVisualAtmosphere(): void {
+  atmosphereClouds = [];
+  speedStreaks = [];
+
+  const cloudCount = Math.max(7, Math.floor(Math.min(w, h) / 110));
+  for (let i = 0; i < cloudCount; i++) {
+    atmosphereClouds.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      radiusX: 45 + Math.random() * 140,
+      radiusY: 18 + Math.random() * 62,
+      speed: 3 + Math.random() * 12,
+      drift: 0.18 + Math.random() * 0.45,
+      phase: Math.random() * Math.PI * 2,
+      alpha: 0.05 + Math.random() * 0.12
+    });
+  }
+
+  const streakCount = Math.max(14, Math.floor(Math.min(w, h) / 40));
+  for (let i = 0; i < streakCount; i++) {
+    speedStreaks.push({
+      baseX: Math.random() * w,
+      baseY: Math.random() * h,
+      length: 30 + Math.random() * 95,
+      width: 1 + Math.random() * 2.2,
+      speed: 0.7 + Math.random() * 1.8,
+      sway: 6 + Math.random() * 18,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
 }
 
 // ============================================================================
@@ -885,6 +958,7 @@ function startGame(): void {
   // Randomize sky color
   currentSkyColor = SKY_COLORS[Math.floor(Math.random() * SKY_COLORS.length)];
   console.log('[startGame] Sky color:', currentSkyColor);
+  rebuildVisualAtmosphere();
   
   // Reset physics accumulators
   hiddenBias = (Math.random() - 0.5) * 0.002; // Start with random hidden bias
@@ -1320,12 +1394,62 @@ function updateWaterParticles(dt: number): void {
 // ============================================================================
 
 function render(): void {
-  // Clear canvas - randomized sky color
-  ctx.fillStyle = currentSkyColor;
+  const time = performance.now() * 0.001;
+
+  // Dynamic sky gradient
+  const skyGradient = ctx.createLinearGradient(0, 0, 0, h);
+  skyGradient.addColorStop(0, lightenColor(currentSkyColor, 28));
+  skyGradient.addColorStop(0.6, currentSkyColor);
+  skyGradient.addColorStop(1, darkenColor(currentSkyColor, 42));
+  ctx.fillStyle = skyGradient;
   ctx.fillRect(0, 0, w, h);
+
+  // Atmospheric top glow
+  const skyGlow = ctx.createRadialGradient(
+    w * 0.5 + Math.sin(time * 0.2) * w * 0.1,
+    h * 0.12,
+    0,
+    w * 0.5,
+    h * 0.15,
+    Math.max(w, h) * 0.75
+  );
+  skyGlow.addColorStop(0, 'rgba(255,255,255,0.26)');
+  skyGlow.addColorStop(0.55, 'rgba(255,255,255,0.08)');
+  skyGlow.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = skyGlow;
+  ctx.fillRect(0, 0, w, h);
+
+  // Moving cloud layers
+  if (atmosphereClouds.length > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (const cloud of atmosphereClouds) {
+      const cloudX = cloud.x + Math.sin(time * cloud.drift + cloud.phase) * cloud.radiusX * 0.35;
+      const cloudY = ((cloud.y + time * cloud.speed) % (h + cloud.radiusY * 2)) - cloud.radiusY;
+      const cloudGlow = ctx.createRadialGradient(
+        cloudX,
+        cloudY,
+        cloud.radiusX * 0.12,
+        cloudX,
+        cloudY,
+        cloud.radiusX
+      );
+      cloudGlow.addColorStop(0, 'rgba(255,255,255,' + cloud.alpha + ')');
+      cloudGlow.addColorStop(0.45, 'rgba(255,255,255,' + (cloud.alpha * 0.32) + ')');
+      cloudGlow.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = cloudGlow;
+      ctx.beginPath();
+      ctx.ellipse(cloudX, cloudY, cloud.radiusX, cloud.radiusY, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
   
   // Draw water
   drawWater();
+
+  // Draw object shadows before geometry
+  drawSceneShadows();
   
   // Draw seesaw
   drawSeesaw();
@@ -1338,13 +1462,19 @@ function render(): void {
   
   // Draw water particles (on top)
   drawWaterParticles();
+
+  drawPostFx();
 }
 
 function drawWater(): void {
   const time = performance.now() * 0.001;
   
-  // Simple blue water with wavy line
-  ctx.fillStyle = '#4a90c2';
+  // Water gradient with depth
+  const waterGradient = ctx.createLinearGradient(0, waterLevel - 20, 0, h);
+  waterGradient.addColorStop(0, '#5ca8d8');
+  waterGradient.addColorStop(0.35, '#4a90c2');
+  waterGradient.addColorStop(1, '#2a5f89');
+  ctx.fillStyle = waterGradient;
   ctx.beginPath();
   ctx.moveTo(-10, h);
   
@@ -1357,6 +1487,13 @@ function drawWater(): void {
   ctx.lineTo(w + 10, h);
   ctx.closePath();
   ctx.fill();
+
+  // Surface shimmer
+  const shimmer = ctx.createLinearGradient(0, waterLevel - 10, 0, waterLevel + 20);
+  shimmer.addColorStop(0, 'rgba(255,255,255,0.35)');
+  shimmer.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = shimmer;
+  ctx.fillRect(-10, waterLevel - 10, w + 20, 30);
   
   // Draw wavy outline on top
   ctx.strokeStyle = '#222';
@@ -1370,11 +1507,38 @@ function drawWater(): void {
     ctx.lineTo(x, waveY);
   }
   ctx.stroke();
+
+  // Foam streak detail
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < speedStreaks.length; i++) {
+    const streak = speedStreaks[i];
+    const phase = time * (1.1 + streak.speed * 0.7) + streak.phase;
+    const y = waterLevel + Math.sin(phase) * 5 + (i % 3) * 5;
+    const x = ((streak.baseX + phase * 70) % (w + 80)) - 40;
+    const len = 12 + streak.length * 0.18;
+    ctx.lineWidth = 1 + streak.width * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + len, y);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawSeesaw(): void {
   ctx.save();
   ctx.translate(pivotX, pivotY);
+
+  // Grounded shadow for the bar
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(0, barLength * 0.02, barLength * 0.4, BAR_THICKNESS * 1.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
   
   // Draw pivot - straight vertical line extending into the ocean (T shape)
   ctx.strokeStyle = COLORS.pivot;
@@ -1396,6 +1560,14 @@ function drawSeesaw(): void {
   ctx.beginPath();
   ctx.roundRect(-barLength / 2, -BAR_THICKNESS / 2, barLength, BAR_THICKNESS, 3);
   ctx.fill();
+
+  // Bar edge highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-barLength / 2 + 8, -BAR_THICKNESS / 2 + 2);
+  ctx.lineTo(barLength / 2 - 8, -BAR_THICKNESS / 2 + 2);
+  ctx.stroke();
   
   ctx.restore();
 }
@@ -1449,6 +1621,18 @@ function drawBombs(): void {
       ctx.lineTo(bomb.x, barSurfaceY - 10);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Warning beam glow
+      const warningGlow = ctx.createLinearGradient(bomb.x, 20, bomb.x, barSurfaceY);
+      warningGlow.addColorStop(0, 'rgba(255,80,80,0)');
+      warningGlow.addColorStop(0.5, 'rgba(255,80,80,0.18)');
+      warningGlow.addColorStop(1, 'rgba(255,80,80,0)');
+      ctx.strokeStyle = warningGlow;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(bomb.x, 20);
+      ctx.lineTo(bomb.x, barSurfaceY);
+      ctx.stroke();
       
       // Draw target circle at bar position
       ctx.strokeStyle = flash ? '#ff4444' : '#cc3333';
@@ -1488,6 +1672,18 @@ function drawBombs(): void {
       ctx.save();
       ctx.translate(bomb.body.position.x, bomb.body.position.y);
       ctx.rotate(bomb.body.angle);
+
+      // Falling motion blur
+      const fallSpeed = Math.abs(bomb.body.velocity.y);
+      if (fallSpeed > 2) {
+        const trailGradient = ctx.createLinearGradient(0, -BOMB_RADIUS * 2.5, 0, BOMB_RADIUS * 1.4);
+        trailGradient.addColorStop(0, 'rgba(255,120,80,0)');
+        trailGradient.addColorStop(1, 'rgba(255,120,80,0.28)');
+        ctx.fillStyle = trailGradient;
+        ctx.beginPath();
+        ctx.ellipse(0, -BOMB_RADIUS * 1.1, BOMB_RADIUS * 0.7, BOMB_RADIUS * (0.6 + Math.min(1, fallSpeed / 10)), 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       
       // Bomb body - simple filled circle
       ctx.fillStyle = '#333';
@@ -1533,6 +1729,36 @@ function drawCar(): void {
   const bodyHeight = car.bodyHeight;
   const wheelRadius = car.wheelRadius;
   const style = car.style;
+  const velocityX = car.body.velocity.x;
+  const velocityY = car.body.velocity.y;
+  const speed = Math.hypot(velocityX, velocityY);
+
+  // Motion trail
+  if (speed > 0.6) {
+    const dirX = velocityX / speed;
+    const dirY = velocityY / speed;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.min(0.38, 0.12 + speed * 0.04);
+    for (let i = 0; i < 3; i++) {
+      const t = (i + 1) / 3;
+      const trailX = car.body.position.x - dirX * (16 + t * 26);
+      const trailY = car.body.position.y - dirY * (10 + t * 18);
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.22 - t * 0.05) + ')';
+      ctx.beginPath();
+      ctx.ellipse(
+        trailX,
+        trailY,
+        bodyWidth * (0.18 + t * 0.07),
+        bodyHeight * (0.3 + t * 0.12),
+        car.body.angle,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+    ctx.restore();
+  }
   
   // Draw car body
   ctx.save();
@@ -1555,6 +1781,16 @@ function drawCar(): void {
   ctx.strokeStyle = style.bodyStroke;
   ctx.lineWidth = 3;
   ctx.stroke();
+
+  // Paint highlight
+  const bodyHighlight = ctx.createLinearGradient(-bodyWidth * 0.45, -bodyHeight * 0.55, bodyWidth * 0.45, bodyHeight * 0.2);
+  bodyHighlight.addColorStop(0, 'rgba(255,255,255,0.35)');
+  bodyHighlight.addColorStop(0.55, 'rgba(255,255,255,0.08)');
+  bodyHighlight.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = bodyHighlight;
+  ctx.beginPath();
+  ctx.roundRect(-bodyWidth / 2 + 2, -bodyHeight / 2 + 2, bodyWidth - 4, bodyHeight * 0.55, bodyHeight * 0.3);
+  ctx.fill();
   
   // Windshield (on the right/front of car)
   ctx.fillStyle = '#87ceeb';
@@ -1640,6 +1876,16 @@ function drawWheel(x: number, y: number, angle: number, radius: number, style: C
 function drawWaterParticles(): void {
   for (const p of waterParticles) {
     const alpha = p.life;
+    const speed = Math.hypot(p.vx, p.vy);
+
+    if (speed > 2) {
+      ctx.strokeStyle = 'rgba(255,255,255,' + (alpha * 0.25) + ')';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(p.x - p.vx * 0.6, p.y - p.vy * 0.6);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
     // Hand-drawn style water drops
     ctx.fillStyle = 'rgba(74, 144, 194, ' + alpha + ')';
     ctx.strokeStyle = 'rgba(34, 34, 34, ' + (alpha * 0.5) + ')';
@@ -1648,6 +1894,125 @@ function drawWaterParticles(): void {
     ctx.arc(p.x, p.y, 4 + (1 - p.life) * 3, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+  }
+}
+
+function drawSceneShadows(): void {
+  if (!car || gamePhase === 'start') return;
+
+  const lightX = w * 0.22;
+  const lightY = h * 0.1;
+  const carSpeed = Math.hypot(car.body.velocity.x, car.body.velocity.y);
+  const carOffsetX = (car.body.position.x - lightX) * 0.08;
+  const carOffsetY = (car.body.position.y - lightY) * 0.05;
+  const speedStretch = Math.min(1, carSpeed / 12);
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(
+    car.body.position.x + carOffsetX,
+    car.body.position.y + car.bodyHeight * 0.82 + carOffsetY,
+    car.bodyWidth * (0.42 + speedStretch * 0.22),
+    car.bodyHeight * 0.38,
+    0,
+    0,
+    Math.PI * 2
+  );
+  ctx.fill();
+
+  for (const bomb of bombs) {
+    if (!bomb.dropping || bomb.exploded || !bomb.body) continue;
+    const bombOffsetX = (bomb.body.position.x - lightX) * 0.06;
+    const bombOffsetY = (bomb.body.position.y - lightY) * 0.04;
+    ctx.globalAlpha = 0.14;
+    ctx.beginPath();
+    ctx.ellipse(
+      bomb.body.position.x + bombOffsetX,
+      bomb.body.position.y + BOMB_RADIUS * 1.2 + bombOffsetY,
+      BOMB_RADIUS * 0.85,
+      BOMB_RADIUS * 0.28,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function getThreatLevel(): number {
+  if (!car || gamePhase === 'start') return 0;
+  const distanceFromCenter = Math.min(1, Math.abs(car.body.position.x - pivotX) / (barLength * 0.46));
+  const proximityToWater = Math.min(1, Math.max(0, (car.body.position.y - (waterLevel - 180)) / 180));
+  const tiltDanger = Math.min(1, Math.abs(barBody.angle) / 0.65);
+  const bombDanger = Math.min(1, bombs.length / 4);
+  return Math.min(1, distanceFromCenter * 0.34 + proximityToWater * 0.34 + tiltDanger * 0.2 + bombDanger * 0.22);
+}
+
+function drawPostFx(): void {
+  const threatLevel = getThreatLevel();
+  const time = performance.now() * 0.001;
+
+  // Cinematic vignette
+  const vignette = ctx.createRadialGradient(
+    w * 0.5,
+    h * 0.44,
+    Math.min(w, h) * 0.18,
+    w * 0.5,
+    h * 0.5,
+    Math.max(w, h) * 0.9
+  );
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(0.68, 'rgba(0,0,0,0.1)');
+  vignette.addColorStop(1, 'rgba(0,0,0,0.26)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
+
+  // Threat edge tint
+  if (threatLevel > 0.02) {
+    const edgeGlow = ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.45,
+      Math.min(w, h) * 0.22,
+      w * 0.5,
+      h * 0.5,
+      Math.max(w, h) * 0.95
+    );
+    edgeGlow.addColorStop(0, 'rgba(255,96,82,0)');
+    edgeGlow.addColorStop(0.72, 'rgba(255,96,82,0)');
+    edgeGlow.addColorStop(1, 'rgba(255,96,82,' + (0.08 + threatLevel * 0.2) + ')');
+    ctx.fillStyle = edgeGlow;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // Speed streaks during high car momentum
+  if (car && gamePhase === 'playing') {
+    const velocity = Math.hypot(car.body.velocity.x, car.body.velocity.y);
+    const speedEnergy = Math.min(1, velocity / 11);
+    if (speedEnergy > 0.18) {
+      const direction = car.body.velocity.x >= 0 ? -1 : 1;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = 0.08 + speedEnergy * 0.12;
+      for (const streak of speedStreaks) {
+        const y = ((streak.baseY + time * streak.speed * 180 + Math.sin(time + streak.phase) * streak.sway) % (h + 70)) - 35;
+        const x = ((streak.baseX + time * streak.speed * 90) % (w + 120)) - 60;
+        const length = streak.length * (0.45 + speedEnergy * 0.95);
+        const x2 = x + length * direction;
+        const gradient = ctx.createLinearGradient(x, y, x2, y);
+        gradient.addColorStop(0, 'rgba(255,255,255,0)');
+        gradient.addColorStop(0.55, 'rgba(190,225,255,0.45)');
+        gradient.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = streak.width;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x2, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 }
 
