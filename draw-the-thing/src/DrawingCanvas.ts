@@ -1,4 +1,4 @@
-import { setState } from "playroomkit";
+import { setState } from "./playroom";
 import type { GameManager } from "./GameManager";
 
 // Sync interval for drawing data (ms) - balance between smoothness and network load

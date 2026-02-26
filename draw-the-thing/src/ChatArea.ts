@@ -1,4 +1,4 @@
-import type { PlayerState } from "playroomkit";
+import type { PlayerState } from "./playroom";
 import type { GameManager } from "./GameManager";
 
 interface Guess {

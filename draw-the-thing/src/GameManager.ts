@@ -6,7 +6,7 @@ import {
   setState,
   getRoomCode,
   PlayerState,
-} from "playroomkit";
+} from "./playroom";
 import * as Tone from "tone";
 import { WORDS } from "./words";
 import { DrawingCanvas } from "./DrawingCanvas";

@@ -1,4 +1,4 @@
-import { insertCoin, getRoomCode, myPlayer } from "playroomkit";
+import { insertCoin, getRoomCode, myPlayer } from "./playroom";
 import { GameManager } from "./GameManager";
 
 // Check for injected data from webview/parent window
